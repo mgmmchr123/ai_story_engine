@@ -1,0 +1,189 @@
+"""Scene render stage using provider abstraction."""
+
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from datetime import UTC, datetime
+from pathlib import Path
+
+from engine.context import PipelineContext
+from engine.logging_utils import get_stage_logger
+from engine.stage import PipelineStage
+from models.scene_schema import Scene, SceneRenderResult
+from pipeline.audio_mixer import mix_scene_audio
+from pipeline.prompt_builder import build_bgm_prompt, build_image_prompt, build_narration_prompt
+from providers.bgm_provider import BGMProvider
+from providers.image_provider import ImageProvider
+from providers.tts_provider import TTSProvider
+
+
+class SceneRenderStage(PipelineStage):
+    """Renders per-scene image/audio/bgm assets."""
+
+    def __init__(self, image_provider: ImageProvider, tts_provider: TTSProvider, bgm_provider: BGMProvider):
+        self.image_provider = image_provider
+        self.tts_provider = tts_provider
+        self.bgm_provider = bgm_provider
+
+    @property
+    def name(self) -> str:
+        return "render_scenes"
+
+    def run(self, context: PipelineContext) -> None:
+        if not context.story:
+            raise ValueError("Story must be parsed before render stage.")
+
+        stage_logger = get_stage_logger(__name__, context.run_id, self.name)
+
+        for scene in context.story.scenes[: context.config.max_scenes]:
+            scene_logger = get_stage_logger(__name__, context.run_id, self.name, scene.scene_id)
+            started = datetime.now(UTC)
+            scene_result = context.scene_results.get(scene.scene_id) or SceneRenderResult(scene_id=scene.scene_id)
+            scene_result.started_at = started.isoformat()
+
+            image_path = context.paths.images_dir / f"scene_{scene.scene_id:03d}{context.config.providers.image_extension}"
+            narration_path = context.paths.audio_dir / f"scene_{scene.scene_id:03d}{context.config.providers.narration_extension}"
+            bgm_path = context.paths.bgm_dir / f"scene_{scene.scene_id:03d}{context.config.providers.bgm_extension}"
+            mixed_path = context.paths.mixed_dir / f"scene_{scene.scene_id:03d}{context.config.providers.mixed_audio_extension}"
+
+            if self._can_resume(context, scene_result, image_path, narration_path, bgm_path, mixed_path):
+                scene_result.status = "skipped"
+                scene_result.skipped = True
+                scene_logger.info("Skipped scene rendering due to resume state")
+                context.scene_results[scene.scene_id] = scene_result
+                continue
+
+            scene_result.skipped = False
+            scene_result.image_prompt = build_image_prompt(scene, context.story.visual_bible)
+            scene_result.narration_prompt = build_narration_prompt(scene)
+            scene_result.bgm_parameters = build_bgm_prompt(scene, context.story.visual_bible)
+
+            attempts = context.config.retry.scene_attempts
+            timeout = context.config.retry.scene_timeout_seconds
+            scene_result.status = "failed"
+            scene_result.error = None
+
+            for attempt in range(1, attempts + 1):
+                scene_result.attempts = attempt
+                try:
+                    self._render_scene_with_timeout(
+                        timeout_seconds=timeout,
+                        scene=scene,
+                        scene_result=scene_result,
+                        image_path=image_path,
+                        narration_path=narration_path,
+                        bgm_path=bgm_path,
+                        mixed_path=mixed_path,
+                        bgm_reduction_db=context.config.providers.bgm_mix_reduction_db,
+                    )
+                    scene_result.status = "completed"
+                    scene_result.error = None
+                    scene_logger.info("Scene completed on attempt %s/%s", attempt, attempts)
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    scene_result.error = str(exc)
+                    scene_logger.warning("Attempt %s/%s failed: %s", attempt, attempts, exc)
+
+            if scene_result.status != "completed":
+                context.record_warning(f"scene_id={scene.scene_id} failed: {scene_result.error}")
+                scene_logger.error("Scene failed after retries: %s", scene_result.error)
+
+            finished = datetime.now(UTC)
+            scene_result.completed_at = finished.isoformat()
+            scene_result.duration_seconds = (finished - started).total_seconds()
+            for warning in scene_result.warnings:
+                context.record_warning(f"scene_id={scene.scene_id} warning: {warning}")
+            context.scene_results[scene.scene_id] = scene_result
+
+        if any(result.status == "failed" for result in context.scene_results.values()):
+            context.record_warning("One or more scenes failed during rendering.")
+            stage_logger.warning("Render stage completed with scene failures")
+
+    def _can_resume(
+        self,
+        context: PipelineContext,
+        scene_result: SceneRenderResult,
+        image_path: Path,
+        narration_path: Path,
+        bgm_path: Path,
+        mixed_path: Path,
+    ) -> bool:
+        if not context.resume:
+            return False
+        if scene_result.status not in {"completed", "skipped"}:
+            return False
+        if not (image_path.exists() and narration_path.exists() and mixed_path.exists()):
+            return False
+        if scene_result.assets.bgm_path:
+            return Path(scene_result.assets.bgm_path).exists()
+        return True
+
+    def _render_scene(
+        self,
+        scene: Scene,
+        scene_result: SceneRenderResult,
+        image_path: Path,
+        narration_path: Path,
+        bgm_path: Path,
+        mixed_path: Path,
+        bgm_reduction_db: float,
+    ) -> None:
+        scene_result.assets.image_path = str(
+            self.image_provider.generate(scene, scene_result.image_prompt, image_path)
+        )
+        narration_output = self.tts_provider.generate(scene, scene_result.narration_prompt, narration_path)
+        scene_result.assets.narration_path = str(narration_output)
+
+        bgm_output = bgm_path
+        try:
+            bgm_output = self.bgm_provider.select(scene, scene_result.bgm_parameters, bgm_path)
+            if bgm_output.exists():
+                scene_result.assets.bgm_path = str(bgm_output)
+            else:
+                scene_result.warnings.append("BGM asset missing; using narration-only mix if possible")
+                scene_result.assets.bgm_path = None
+        except Exception as exc:  # noqa: BLE001
+            scene_result.warnings.append(f"BGM selection failed: {exc}")
+            scene_result.assets.bgm_path = None
+            bgm_output = bgm_path
+
+        try:
+            mixed_output = mix_scene_audio(
+                narration_path=narration_output if narration_output.exists() else None,
+                bgm_path=bgm_output if bgm_output.exists() else None,
+                output_path=mixed_path,
+                bgm_reduction_db=bgm_reduction_db,
+            )
+            if mixed_output:
+                scene_result.assets.mixed_audio_path = str(mixed_output)
+            else:
+                scene_result.warnings.append("Scene mix export unavailable")
+                scene_result.assets.mixed_audio_path = None
+        except Exception as exc:  # noqa: BLE001
+            scene_result.warnings.append(f"Scene mix failed: {exc}")
+            scene_result.assets.mixed_audio_path = str(narration_output) if narration_output.exists() else None
+
+    def _render_scene_with_timeout(
+        self,
+        timeout_seconds: int,
+        scene: Scene,
+        scene_result: SceneRenderResult,
+        image_path: Path,
+        narration_path: Path,
+        bgm_path: Path,
+        mixed_path: Path,
+        bgm_reduction_db: float,
+    ) -> None:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                self._render_scene,
+                scene,
+                scene_result,
+                image_path,
+                narration_path,
+                bgm_path,
+                mixed_path,
+                bgm_reduction_db,
+            )
+            try:
+                future.result(timeout=timeout_seconds)
+            except FutureTimeoutError as exc:
+                raise TimeoutError(f"Scene render timed out after {timeout_seconds}s") from exc
