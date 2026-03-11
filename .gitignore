@@ -47,5 +47,5 @@ Thumbs.db
 story_engine.log
 
 # Output files
-output/images/*.png
-output/audio/*.mp3
+# Runtime output
+output/

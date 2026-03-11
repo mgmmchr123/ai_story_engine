@@ -1,4 +1,0 @@
-file 'C:/Users/mgmmc/PythonProject/ai_story_engine/output/runs/20260311_211129_77f2276b/video/segments/scene_001.mp4'
-file 'C:/Users/mgmmc/PythonProject/ai_story_engine/output/runs/20260311_211129_77f2276b/video/segments/scene_002.mp4'
-file 'C:/Users/mgmmc/PythonProject/ai_story_engine/output/runs/20260311_211129_77f2276b/video/segments/scene_003.mp4'
-file 'C:/Users/mgmmc/PythonProject/ai_story_engine/output/runs/20260311_211129_77f2276b/video/segments/scene_004.mp4'
