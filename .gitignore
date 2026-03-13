@@ -51,4 +51,5 @@ story_engine.log
 output/
 
 # Local patch scratch files
-changes.patch
+*.patch
+
