@@ -23,9 +23,42 @@ class _InvalidJSONResponse:
 
 
 class ParseStageFallbackTests(unittest.TestCase):
-    @patch("providers.story_parser_provider.urllib_request.urlopen")
-    def test_parse_stage_falls_back_to_placeholder_on_invalid_ollama_output(self, mock_urlopen) -> None:
-        mock_urlopen.return_value = _InvalidJSONResponse()
+    def test_parse_stage_primary_path_sets_canonical_and_preserves_generated_title_when_input_title_empty(self) -> None:
+        stage = StoryParseStage(parser_provider=OllamaStoryParserProvider(ParserSettings()))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = PipelineContext(
+                run_id="run_parse_primary",
+                story_input="Lanterns sway above the tavern door.",
+                story_title="",
+                story_author="Tester",
+                config=ENGINE_SETTINGS,
+                paths=RunPaths(
+                    run_dir=root,
+                    images_dir=root / "images",
+                    audio_dir=root / "audio",
+                    bgm_dir=root / "bgm",
+                    mixed_dir=root / "mixed",
+                    final_dir=root / "final",
+                    final_story_path=root / "final" / "story.mp3",
+                    manifest_path=root / "manifest.json",
+                ),
+            )
+
+            stage.run(context)
+
+        self.assertIsNotNone(context.story_json)
+        self.assertIsNotNone(context.story)
+        assert context.story_json is not None
+        assert context.story is not None
+        self.assertEqual(context.metadata.get("story_schema_version"), "1.0")
+        self.assertEqual(context.story_json["title"], "Lanterns sway above the tavern door.")
+        self.assertEqual(context.story.title, "Lanterns sway above the tavern door.")
+
+    @patch("pipeline.parse_stage.StoryParser.parse")
+    def test_parse_stage_falls_back_to_placeholder_when_canonical_parse_fails(self, mock_parse) -> None:
+        mock_parse.side_effect = ValueError("canonical parser failed")
         parser_provider = OllamaStoryParserProvider(ParserSettings())
         stage = StoryParseStage(parser_provider=parser_provider)
 
@@ -63,12 +96,10 @@ class ParseStageFallbackTests(unittest.TestCase):
         self.assertIn("location_name", summary[0])
         self.assertIn("active_character_names", summary[0])
 
-    def test_parse_stage_falls_back_on_primary_timeout(self) -> None:
-        class _TimeoutParser:
-            def parse(self, story_text: str, title: str, author: str):  # noqa: ANN001
-                raise TimeoutError("primary parser timed out")
-
-        stage = StoryParseStage(parser_provider=_TimeoutParser())  # type: ignore[arg-type]
+    @patch("pipeline.parse_stage.StoryParser.parse")
+    def test_parse_stage_falls_back_on_canonical_timeout(self, mock_parse) -> None:
+        mock_parse.side_effect = TimeoutError("primary parser timed out")
+        stage = StoryParseStage(parser_provider=OllamaStoryParserProvider(ParserSettings()))
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

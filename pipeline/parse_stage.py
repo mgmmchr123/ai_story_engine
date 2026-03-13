@@ -1,6 +1,7 @@
 """Parse stage implementation."""
 
 from engine.parser.story_adapter import story_content_to_story_json, story_json_to_story_content
+from engine.parser.story_parser import StoryParser
 from engine.parser.story_validator import validate_story_json
 from engine.world_state import resolve_scene_characters, resolve_scene_location
 from engine.context import PipelineContext
@@ -13,7 +14,9 @@ class StoryParseStage(PipelineStage):
     """Parses raw story text into structured scene domain objects."""
 
     def __init__(self, parser_provider: StoryParserProvider):
+        # Retained for constructor compatibility and future provider-based fallback expansion.
         self.parser_provider = parser_provider
+        self.canonical_parser = StoryParser()
         self.fallback_provider = PlaceholderStoryParserProvider()
 
     @property
@@ -21,19 +24,14 @@ class StoryParseStage(PipelineStage):
         return "parse_story"
 
     def should_skip(self, context: PipelineContext) -> bool:
-        return context.story_json is not None or context.story is not None
+        return context.story_json is not None
 
     def run(self, context: PipelineContext) -> None:
         logger = get_stage_logger(__name__, context.run_id, self.name)
         try:
-            parsed_story = self.parser_provider.parse(
-                story_text=context.story_input,
-                title=context.story_title,
-                author=context.story_author,
-            )
-            context.story_json = validate_story_json(story_content_to_story_json(parsed_story))
-            context.story_json["title"] = context.story_title
-            context.story = story_json_to_story_content(context.story_json, author=context.story_author)
+            story_json = self._parse_canonical(context)
+            context.story_json = story_json
+            context.story = story_json_to_story_content(story_json, author=context.story_author)
             self._update_story_metadata(context)
         except Exception as exc:  # noqa: BLE001
             self._apply_fallback(
@@ -51,6 +49,11 @@ class StoryParseStage(PipelineStage):
         )
         return True
 
+    def _parse_canonical(self, context: PipelineContext) -> dict:
+        story_json = self.canonical_parser.parse(context.story_input)
+        story_json["title"] = context.story_title or story_json.get("title", "Untitled Story")
+        return validate_story_json(story_json)
+
     def _apply_fallback(self, context: PipelineContext, reason: str, logger) -> None:  # noqa: ANN001
         logger.warning("Primary parser degraded; falling back to placeholder parser: %s", reason)
         context.record_warning(f"Parser degraded; fallback used: {reason}")
@@ -62,7 +65,7 @@ class StoryParseStage(PipelineStage):
             author=context.story_author,
         )
         context.story_json = validate_story_json(story_content_to_story_json(fallback_story))
-        context.story_json["title"] = context.story_title
+        context.story_json["title"] = context.story_title or context.story_json.get("title", "Untitled Story")
         context.story = story_json_to_story_content(context.story_json, author=context.story_author)
         self._update_story_metadata(context)
 
@@ -70,7 +73,7 @@ class StoryParseStage(PipelineStage):
         if context.story_json:
             context.metadata["story_json"] = context.story_json
             context.metadata["story_schema_version"] = "1.0"
-        if context.story.visual_bible:
+        if context.story is not None and context.story.visual_bible:
             context.metadata["visual_bible_summary"] = {
                 "character_count": len(context.story.visual_bible.characters),
                 "location_count": len(context.story.visual_bible.locations),
