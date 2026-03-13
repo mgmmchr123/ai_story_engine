@@ -145,6 +145,36 @@ class RunReportTests(unittest.TestCase):
 
             self.assertEqual(report["scene_instruction_paths"], ["scenes/scene_001.json"])
 
+    def test_build_run_report_includes_rerun_selection_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            context = _build_context(Path(tmp))
+            context.metadata["rerun_selection"] = {
+                "requested_scene_ids": [1, 4],
+                "available_scene_instruction_ids": [1, 2, 3],
+                "missing_scene_ids": [4],
+                "will_rerun_scene_ids": [1],
+            }
+
+            report = build_run_report(context)
+
+            self.assertEqual(
+                report["rerun_selection"],
+                {
+                    "requested_scene_ids": [1, 4],
+                    "available_scene_instruction_ids": [1, 2, 3],
+                    "missing_scene_ids": [4],
+                    "will_rerun_scene_ids": [1],
+                },
+            )
+
+    def test_build_run_report_omits_rerun_selection_when_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            context = _build_context(Path(tmp))
+
+            report = build_run_report(context)
+
+            self.assertNotIn("rerun_selection", report)
+
     def test_build_run_report_populates_core_fields_deterministically(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             context = _build_context(Path(tmp))

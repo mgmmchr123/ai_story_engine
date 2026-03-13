@@ -22,5 +22,9 @@ def build_run_report(context: PipelineContext) -> dict:
     if isinstance(scene_instruction_paths, list):
         report["scene_instruction_paths"] = list(scene_instruction_paths)
 
+    rerun_selection = context.metadata.get("rerun_selection")
+    if isinstance(rerun_selection, dict):
+        report["rerun_selection"] = dict(rerun_selection)
+
     report["scene_summary"] = summarize_scene_results(context)
     return report

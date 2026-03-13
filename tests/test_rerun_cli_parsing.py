@@ -310,9 +310,27 @@ class RerunCliParsingTests(unittest.TestCase):
             self.assertEqual(written.run_report["run_id"], root.name)
             self.assertEqual(written.run_report["scene_summary"]["completed"], 1)
             self.assertEqual(written.run_report["scene_summary"]["scene_ids"], [1])
+            self.assertEqual(
+                written.run_report["rerun_selection"],
+                {
+                    "requested_scene_ids": [1],
+                    "available_scene_instruction_ids": [1],
+                    "missing_scene_ids": [],
+                    "will_rerun_scene_ids": [1],
+                },
+            )
             output = json.loads(stdout.getvalue())
             self.assertEqual(output["scene_summary"]["completed"], 1)
             self.assertEqual(output["scene_summary"]["scene_ids"], [1])
+            self.assertEqual(
+                output["rerun_selection"],
+                {
+                    "requested_scene_ids": [1],
+                    "available_scene_instruction_ids": [1],
+                    "missing_scene_ids": [],
+                    "will_rerun_scene_ids": [1],
+                },
+            )
 
     def test_real_execution_reruns_only_valid_scene_ids_for_mixed_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -327,14 +345,27 @@ class RerunCliParsingTests(unittest.TestCase):
                 context.metadata["rerun"] = {"is_rerun": True, "scene_ids": sorted(scene_ids), "bootstrap": bootstrap}
                 return context
 
+            stdout = io.StringIO()
             with (
                 patch("engine.cli.rerun_cli.build_image_provider", return_value=object()),
                 patch("engine.cli.rerun_cli.build_tts_provider", return_value=object()),
                 patch("engine.cli.rerun_cli.build_bgm_provider", return_value=object()),
                 patch("engine.cli.rerun_cli.SceneRenderStage", return_value=object()),
                 patch("engine.cli.rerun_cli.rerun_selected_scenes", side_effect=_fake_rerun),
+                redirect_stdout(stdout),
             ):
                 run_scene_rerun_cli(["--run-dir", str(root), "--scene-ids", "1,4"])
+
+            output = json.loads(stdout.getvalue())
+            self.assertEqual(
+                output["rerun_selection"],
+                {
+                    "requested_scene_ids": [1, 4],
+                    "available_scene_instruction_ids": [1, 2],
+                    "missing_scene_ids": [4],
+                    "will_rerun_scene_ids": [1],
+                },
+            )
 
     def test_real_execution_raises_when_all_requested_ids_are_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

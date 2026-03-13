@@ -131,6 +131,7 @@ def run_scene_rerun_cli(argv: list[str] | None = None) -> None:
         return
 
     selection = resolve_rerun_scene_selection(context, args.scene_ids)
+    context.metadata["rerun_selection"] = selection
     valid_scene_ids = set(selection["will_rerun_scene_ids"])
     if not valid_scene_ids:
         raise ValueError("No requested scene ids are available for rerun")
