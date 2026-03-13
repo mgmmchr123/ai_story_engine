@@ -7,6 +7,11 @@ from pathlib import Path
 from config import ENGINE_SETTINGS
 from engine.cache.scene_instruction_cache import save_scene_instruction
 from engine.context import PipelineContext, RunPaths
+from engine.manifest import StoryRunManifest, save_manifest
+from engine.rerun.manifest_rerun_bootstrap import (
+    bootstrap_rerun_context_from_manifest,
+    bootstrap_rerun_context_from_run_dir,
+)
 from engine.rerun.scene_rerun_bootstrap import (
     bootstrap_scene_rerun_context,
     load_scene_instructions_from_dir,
@@ -106,6 +111,121 @@ class SceneRerunBootstrapTests(unittest.TestCase):
             context = _build_context(root)
 
             bootstrap_scene_rerun_context(context)
+
+            self.assertEqual(context.scene_instructions, [])
+            self.assertEqual(context.metadata["scene_instruction_paths"], [])
+
+    def test_bootstrap_rerun_context_from_manifest_restores_paths_and_scene_instructions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = _build_context(root)
+            save_scene_instruction(_instruction(2), context.paths.scenes_dir)
+            save_scene_instruction(_instruction(1), context.paths.scenes_dir)
+            manifest = StoryRunManifest(
+                run_id=context.run_id,
+                status="completed",
+                story_title=context.story_title,
+                story_author=context.story_author,
+                scene_count=0,
+                started_at=context.started_at,
+                completed_at=context.started_at,
+                total_duration_seconds=0.0,
+                metadata={"scene_instruction_paths": ["from_manifest/scene_001.json", "from_manifest/scene_002.json"]},
+            )
+            save_manifest(manifest, context.paths.manifest_path)
+
+            bootstrapped = bootstrap_rerun_context_from_manifest(context.paths.manifest_path, context)
+
+            self.assertIs(bootstrapped, context)
+            self.assertEqual([item["scene_id"] for item in context.scene_instructions], [1, 2])
+            self.assertEqual(
+                [Path(path).name for path in context.metadata["scene_instruction_paths"]],
+                ["scene_001.json", "scene_002.json"],
+            )
+
+    def test_bootstrap_rerun_context_from_run_dir_uses_context_manifest_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = _build_context(root)
+            save_scene_instruction(_instruction(1), context.paths.scenes_dir)
+            manifest = StoryRunManifest(
+                run_id=context.run_id,
+                status="completed",
+                story_title=context.story_title,
+                story_author=context.story_author,
+                scene_count=0,
+                started_at=context.started_at,
+                completed_at=context.started_at,
+                total_duration_seconds=0.0,
+                run_report={"scene_instruction_paths": ["from_run_report/scene_001.json"]},
+            )
+            save_manifest(manifest, context.paths.manifest_path)
+
+            bootstrap_rerun_context_from_run_dir(context)
+
+            self.assertEqual([item["scene_id"] for item in context.scene_instructions], [1])
+            self.assertEqual([Path(path).name for path in context.metadata["scene_instruction_paths"]], ["scene_001.json"])
+
+    def test_bootstrap_rerun_context_from_manifest_raises_for_missing_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = _build_context(root)
+
+            with self.assertRaisesRegex(ValueError, "Manifest not found"):
+                bootstrap_rerun_context_from_manifest(context.paths.manifest_path, context)
+
+    def test_bootstrap_rerun_context_from_manifest_raises_for_invalid_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = _build_context(root)
+            context.paths.manifest_path.write_text("{invalid json", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Invalid manifest"):
+                bootstrap_rerun_context_from_manifest(context.paths.manifest_path, context)
+
+    def test_bootstrap_rerun_context_from_manifest_preserves_story_and_story_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = _build_context(root)
+            original_story = context.story
+            original_story_json = context.story_json
+            save_scene_instruction(_instruction(1), context.paths.scenes_dir)
+            manifest = StoryRunManifest(
+                run_id=context.run_id,
+                status="completed",
+                story_title=context.story_title,
+                story_author=context.story_author,
+                scene_count=0,
+                started_at=context.started_at,
+                completed_at=context.started_at,
+                total_duration_seconds=0.0,
+                metadata={"scene_instruction_paths": ["from_manifest/scene_001.json"]},
+            )
+            save_manifest(manifest, context.paths.manifest_path)
+
+            bootstrap_rerun_context_from_manifest(context.paths.manifest_path, context)
+
+            self.assertIs(context.story, original_story)
+            self.assertIs(context.story_json, original_story_json)
+
+    def test_bootstrap_rerun_context_from_manifest_allows_empty_scenes_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = _build_context(root)
+            manifest = StoryRunManifest(
+                run_id=context.run_id,
+                status="completed",
+                story_title=context.story_title,
+                story_author=context.story_author,
+                scene_count=0,
+                started_at=context.started_at,
+                completed_at=context.started_at,
+                total_duration_seconds=0.0,
+                metadata={"scene_instruction_paths": ["from_manifest/scene_001.json"]},
+            )
+            save_manifest(manifest, context.paths.manifest_path)
+
+            bootstrap_rerun_context_from_manifest(context.paths.manifest_path, context)
 
             self.assertEqual(context.scene_instructions, [])
             self.assertEqual(context.metadata["scene_instruction_paths"], [])
