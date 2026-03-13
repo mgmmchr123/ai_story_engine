@@ -89,6 +89,8 @@ class ParserSettings:
     """Story parser provider settings."""
 
     provider: str = "ollama"
+    extractor_kind: str = "deterministic"
+    extractor_kwargs: dict = field(default_factory=dict)
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:7b"
     ollama_timeout_seconds: int = 90

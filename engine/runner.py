@@ -126,7 +126,11 @@ class PipelineRunner:
         tts_provider = build_tts_provider(self.config.providers)
         bgm_provider = build_bgm_provider(self.config.providers)
         return [
-            StoryParseStage(parser_provider=story_parser_provider),
+            StoryParseStage(
+                parser_provider=story_parser_provider,
+                extractor_kind=self.config.parser.extractor_kind,
+                extractor_kwargs=self.config.parser.extractor_kwargs,
+            ),
             SceneBuilderStage(),
             SceneRenderStage(
                 image_provider=image_provider,
