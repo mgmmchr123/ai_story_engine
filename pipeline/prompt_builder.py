@@ -2,7 +2,7 @@
 
 import logging
 from engine.world_state import resolve_scene_location
-from models.scene_schema import Scene, StoryVisualBible
+from models.scene_schema import Scene, StoryVisualBible, scene_mood_value
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def build_image_prompt(scene: Scene, visual_bible: StoryVisualBible | None = Non
         scene_action = scene.action_description or scene.description
         return (
             f"{characters} in a {scene.setting.value}, "
-            f"{scene.mood.value} atmosphere, "
+            f"{scene_mood_value(scene.mood)} atmosphere, "
             f"{scene_action}, "
             "cinematic lighting, dramatic composition, high quality illustration"
         )
@@ -55,7 +55,7 @@ def build_image_prompt(scene: Scene, visual_bible: StoryVisualBible | None = Non
         f"location: {location_fragment}",
         f"characters: {'; '.join(character_fragments)}",
         f"current action: {action}",
-        f"scene mood: {scene.mood.value}",
+        f"scene mood: {scene_mood_value(scene.mood)}",
         f"camera: {camera}",
     ]
 
@@ -111,7 +111,7 @@ def build_bgm_prompt(scene: Scene, visual_bible: StoryVisualBible | None = None)
     setting_value = location["bgm_setting"]
 
     bgm_params = {
-        "mood": scene.mood.value,
+        "mood": scene_mood_value(scene.mood),
         "setting": setting_value,
         "intensity": _calculate_intensity(scene),
         "tempo": _calculate_tempo(scene),
@@ -133,7 +133,7 @@ def _calculate_intensity(scene: Scene) -> str:
         "calm": "low",
         "humorous": "low"
     }
-    return mood_intensity_map.get(scene.mood.value, "medium")
+    return mood_intensity_map.get(scene_mood_value(scene.mood), "medium")
 
 
 def _calculate_tempo(scene: Scene) -> str:
@@ -146,11 +146,17 @@ def _calculate_tempo(scene: Scene) -> str:
         "calm": "slow",
         "humorous": "moderate"
     }
-    return mood_tempo_map.get(scene.mood.value, "moderate")
+    return mood_tempo_map.get(scene_mood_value(scene.mood), "moderate")
 
 def build_narration_prompt(scene: Scene) -> str:
     """Build narration text for TTS."""
-    return f"{scene.title}. {scene.narration_text}"
+    narration = (scene.narration_text or "").strip()
+    if narration:
+        return narration
+    fallback = (scene.description or scene.action_description or scene.title).strip()
+    if fallback:
+        return fallback
+    return f"Scene {scene.scene_id}"
 
 def _determine_genre(setting: str) -> str:
     """Determine appropriate music genre for setting."""

@@ -108,6 +108,32 @@ class StoryPlayerWorldStateTests(unittest.TestCase):
         self.assertEqual(scene_list[0]["setting"], "castle")
         self.assertEqual(scene_list[0]["characters"], ["Legacy Hero"])
 
+    def test_get_scene_list_preserves_raw_canonical_mood_strings(self) -> None:
+        story = StoryContent(
+            title="Story",
+            author="Author",
+            description="Desc",
+            scenes=[
+                Scene(
+                    scene_id=1,
+                    title="Mood Scene",
+                    description="Mood scene",
+                    characters=[],
+                    setting=Setting.FOREST,
+                    mood="determined_and_suspenseful",
+                )
+            ],
+        )
+        output = PipelineOutput(
+            run_id="run_3",
+            story=story,
+            scene_results=[SceneRenderResult(scene_id=1, status="completed")],
+        )
+        player = StoryPlayer(output)
+        scene_list = player.get_scene_list()
+
+        self.assertEqual(scene_list[0]["mood"], "determined_and_suspenseful")
+
     def test_player_total_duration_falls_back_to_scene_media_durations(self) -> None:
         story = StoryContent(
             title="Story",

@@ -1,7 +1,11 @@
 """Logging helpers with run/stage/scene context fields."""
 
+from __future__ import annotations
+
+import json
 import logging
 from pathlib import Path
+from typing import Any
 
 
 class ContextDefaultsFilter(logging.Filter):
@@ -50,3 +54,26 @@ def get_stage_logger(name: str, run_id: str, stage: str, scene_id: int | None = 
         "scene_id": scene_id if scene_id is not None else "-",
     }
     return logging.LoggerAdapter(logging.getLogger(name), extra)
+
+
+def compact_json(value: Any, max_len: int = 1000) -> str:
+    """Return a compact, truncated JSON-ish preview for diagnostics."""
+
+    try:
+        rendered = json.dumps(value, ensure_ascii=True, separators=(",", ":"), default=str)
+    except TypeError:
+        rendered = repr(value)
+    if len(rendered) <= max_len:
+        return rendered
+    return f"{rendered[: max_len - 3]}..."
+
+
+def preview_text(value: Any, max_len: int = 120) -> str:
+    """Return a single-line truncated text preview for diagnostics."""
+
+    if value is None:
+        return ""
+    text = str(value).replace("\r", " ").replace("\n", " ").strip()
+    if len(text) <= max_len:
+        return text
+    return f"{text[: max_len - 3]}..."

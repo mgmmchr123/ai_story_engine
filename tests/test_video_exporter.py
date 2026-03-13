@@ -21,16 +21,28 @@ class VideoExporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
             images_dir = run_dir / "images"
+            audio_dir = run_dir / "audio"
             images_dir.mkdir(parents=True, exist_ok=True)
+            audio_dir.mkdir(parents=True, exist_ok=True)
             for idx in range(1, 3):
                 (images_dir / f"scene_{idx:03d}.png").write_bytes(b"png")
+                (audio_dir / f"scene_{idx:03d}.wav").write_bytes(b"wav")
             final_dir = run_dir / "final"
             final_dir.mkdir(parents=True, exist_ok=True)
             (final_dir / "story.mp3").write_bytes(b"mp3")
 
             def _run_side_effect(command, **kwargs):  # noqa: ANN001
                 if "ffprobe" in command[0]:
-                    return subprocess.CompletedProcess(command, returncode=0, stdout="3.0\n", stderr="")
+                    target = str(command[-1])
+                    if target.endswith("story.mp3"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="3.0\n", stderr="")
+                    if target.endswith("combined_segments.mp4"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="2.0\n", stderr="")
+                    if target.endswith("combined_segments_padded.mp4"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="3.0\n", stderr="")
+                    if target.endswith("final_video.mp4"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="3.0\n", stderr="")
+                    return subprocess.CompletedProcess(command, returncode=0, stdout="1.0\n", stderr="")
                 if len(command) == 3 and command[1] == "-i" and command[2] == str(run_dir / "video" / "final_video.mp4"):
                     return subprocess.CompletedProcess(
                         command,
@@ -48,6 +60,58 @@ class VideoExporterTests(unittest.TestCase):
 
             self.assertTrue(exported.exists())
             self.assertEqual(exported.suffix, ".mp4")
+
+    @patch("engine.video_exporter.subprocess.run")
+    @patch("engine.video_exporter._resolve_binary")
+    def test_export_video_applies_guard_frame_when_mux_is_still_short(self, mock_resolve_binary, mock_run) -> None:
+        mock_resolve_binary.side_effect = ["ffmpeg", "ffprobe"]
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            images_dir = run_dir / "images"
+            audio_dir = run_dir / "audio"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            audio_dir.mkdir(parents=True, exist_ok=True)
+            (images_dir / "scene_001.png").write_bytes(b"png")
+            (audio_dir / "scene_001.wav").write_bytes(b"wav")
+            final_dir = run_dir / "final"
+            final_dir.mkdir(parents=True, exist_ok=True)
+            (final_dir / "story.mp3").write_bytes(b"mp3")
+
+            final_video_probe_count = {"count": 0}
+
+            def _run_side_effect(command, **kwargs):  # noqa: ANN001
+                if "ffprobe" in command[0]:
+                    target = str(command[-1])
+                    if target.endswith("story.mp3"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="3.000\n", stderr="")
+                    if target.endswith("combined_segments.mp4"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="2.900\n", stderr="")
+                    if target.endswith("combined_segments_padded.mp4"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="3.000\n", stderr="")
+                    if target.endswith("combined_segments_guarded.mp4"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="3.083333\n", stderr="")
+                    if target.endswith("final_video.mp4"):
+                        final_video_probe_count["count"] += 1
+                        stdout = "2.900\n" if final_video_probe_count["count"] == 1 else "3.000\n"
+                        return subprocess.CompletedProcess(command, returncode=0, stdout=stdout, stderr="")
+                    return subprocess.CompletedProcess(command, returncode=0, stdout="1.000\n", stderr="")
+                if len(command) == 3 and command[1] == "-i" and command[2] == str(run_dir / "video" / "final_video.mp4"):
+                    return subprocess.CompletedProcess(
+                        command,
+                        returncode=0,
+                        stdout="",
+                        stderr="Stream #0:0: Video: h264\nStream #0:1: Audio: aac\n",
+                    )
+                output = Path(command[-1])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"video")
+                return subprocess.CompletedProcess(command, returncode=0, stdout="", stderr="")
+
+            mock_run.side_effect = _run_side_effect
+            exported = export_video(run_dir)
+
+            self.assertTrue(exported.exists())
+            self.assertGreaterEqual(final_video_probe_count["count"], 2)
 
     @patch("engine.video_exporter._resolve_binary")
     def test_export_video_raises_on_missing_images(self, mock_resolve_binary) -> None:
@@ -78,14 +142,20 @@ class VideoExporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
             images_dir = run_dir / "images"
+            audio_dir = run_dir / "audio"
             images_dir.mkdir(parents=True, exist_ok=True)
+            audio_dir.mkdir(parents=True, exist_ok=True)
             (images_dir / "scene_001.png").write_bytes(b"png")
+            (audio_dir / "scene_001.wav").write_bytes(b"wav")
             final_dir = run_dir / "final"
             final_dir.mkdir(parents=True, exist_ok=True)
             (final_dir / "story.mp3").write_bytes(b"mp3")
 
             def _run_side_effect(command, **kwargs):  # noqa: ANN001
                 if "ffprobe" in command[0]:
+                    target = str(command[-1])
+                    if target.endswith("story.mp3"):
+                        return subprocess.CompletedProcess(command, returncode=0, stdout="2.0\n", stderr="")
                     return subprocess.CompletedProcess(command, returncode=0, stdout="2.0\n", stderr="")
                 if len(command) == 3 and command[1] == "-i" and command[2] == str(run_dir / "video" / "final_video.mp4"):
                     return subprocess.CompletedProcess(

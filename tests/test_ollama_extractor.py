@@ -34,7 +34,17 @@ class OllamaStoryExtractorTests(unittest.TestCase):
                         "style": "anime",
                         "characters": [],
                         "locations": [],
-                        "scenes": [],
+                        "scenes": [
+                            {
+                                "scene_id": 1,
+                                "title": "Scene 1",
+                                "location": "forest",
+                                "mood": "calm",
+                                "characters": [],
+                                "narration": "A ranger watches the trees sway.",
+                                "duration_sec": 5,
+                            }
+                        ],
                     }
                 )
             }
@@ -56,7 +66,7 @@ class OllamaStoryExtractorTests(unittest.TestCase):
             {
                 "response": (
                     "Here is the canonical story_json:\n"
-                    '{"story_id":"wrapped_story","title":"Wrapped","style":"anime","characters":[],"locations":[],"scenes":[]}\n'
+                    '{"story_id":"wrapped_story","title":"Wrapped","style":"anime","characters":[],"locations":[],"scenes":[{"scene_id":1,"title":"Scene 1","location":"forest","mood":"mysterious","characters":[],"narration":"Wrapped output test","duration_sec":5}]}\n'
                     "End."
                 )
             }
@@ -128,13 +138,23 @@ class OllamaStoryExtractorTests(unittest.TestCase):
                         "style": "anime",
                         "characters": [],
                         "locations": [],
-                        "scenes": [],
+                        "scenes": [
+                            {
+                                "scene_id": 1,
+                                "title": "Scene 1",
+                                "location": "forest",
+                                "mood": "mysterious",
+                                "characters": [],
+                                "narration": "Wiring test",
+                                "duration_sec": 5,
+                            }
+                        ],
                     }
                 )
             }
         )
         extractor = OllamaStoryExtractor(
-            model="llama3.1:8b",
+            model="qwen2.5:7b",
             url="http://localhost:11434",
             timeout_seconds=17,
             temperature=0.25,
@@ -147,7 +167,7 @@ class OllamaStoryExtractorTests(unittest.TestCase):
         payload = json.loads(request.data.decode("utf-8"))
         self.assertEqual(request.full_url, "http://localhost:11434/api/generate")
         self.assertEqual(timeout, 17)
-        self.assertEqual(payload["model"], "llama3.1:8b")
+        self.assertEqual(payload["model"], "qwen2.5:7b")
         self.assertEqual(payload["options"]["temperature"], 0.25)
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["format"], "json")
@@ -155,6 +175,38 @@ class OllamaStoryExtractorTests(unittest.TestCase):
         self.assertIn("Do not use markdown fences", payload["prompt"])
         self.assertIn("story_id, title, style, characters, locations, scenes", payload["prompt"])
         self.assertIn("scene_id and duration_sec must be integers", payload["prompt"])
+        self.assertIn("Return exactly 1 scenes", payload["prompt"])
+
+    @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
+    def test_scene_count_mismatch_raises_clear_value_error(self, mock_urlopen) -> None:
+        mock_urlopen.return_value = _FakeResponse(
+            {
+                "response": json.dumps(
+                    {
+                        "story_id": "wired_story",
+                        "title": "Wired",
+                        "style": "anime",
+                        "characters": [],
+                        "locations": [],
+                        "scenes": [
+                            {
+                                "scene_id": 1,
+                                "title": "Scene 1",
+                                "location": "forest",
+                                "mood": "mysterious",
+                                "characters": [],
+                                "narration": "First beat. Second beat.",
+                                "duration_sec": 5,
+                            }
+                        ],
+                    }
+                )
+            }
+        )
+        extractor = OllamaStoryExtractor()
+
+        with self.assertRaisesRegex(ValueError, "expected 2 narrative beats"):
+            extractor.extract("First beat. Second beat.")
 
 
 if __name__ == "__main__":

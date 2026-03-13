@@ -36,6 +36,24 @@ class Mood(Enum):
     HUMOROUS = "humorous"
 
 
+SceneMood = Mood | str
+
+
+def display_value(value: Any) -> str:
+    """Return a stable display string for enums, plain strings, and other values."""
+
+    raw = getattr(value, "value", value)
+    text = str(raw or "").strip()
+    return text
+
+
+def scene_mood_value(mood: SceneMood) -> str:
+    """Return a stable string value for enum-backed or raw scene moods."""
+
+    text = display_value(mood)
+    return text or Mood.MYSTERIOUS.value
+
+
 @dataclass(slots=True)
 class CharacterData:
     """Character information in a scene."""
@@ -111,7 +129,7 @@ class Scene:
     description: str
     characters: list[CharacterData]
     setting: Setting
-    mood: Mood
+    mood: SceneMood
     narration_text: str = ""
     location_id: str | None = None
     active_character_ids: list[str] = field(default_factory=list)

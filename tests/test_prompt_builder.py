@@ -94,9 +94,9 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("missing_loc", prompt)
         self.assertIn("A shadow moves.", prompt)
 
-    def test_build_narration_prompt_prefixes_title(self) -> None:
+    def test_build_narration_prompt_prefers_scene_narration(self) -> None:
         narration = build_narration_prompt(self.scene)
-        self.assertTrue(narration.startswith("Arrival."))
+        self.assertEqual(narration, "Aria pushed open the castle gates.")
 
     def test_build_bgm_prompt_contains_intensity_and_tempo(self) -> None:
         bgm = build_bgm_prompt(self.scene)

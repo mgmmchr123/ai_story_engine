@@ -27,7 +27,7 @@ class RunnerParserExtractorConfigTests(unittest.TestCase):
             ENGINE_SETTINGS,
             parser=ParserSettings(
                 extractor_kind="ollama",
-                ollama_model="llama3.1:8b",
+                ollama_model="qwen2.5:7b",
                 ollama_url="http://localhost:11434",
             ),
         )
@@ -37,7 +37,7 @@ class RunnerParserExtractorConfigTests(unittest.TestCase):
 
         parse_stage = runner._stages[0]
         self.assertIsInstance(parse_stage.canonical_parser.extractor, OllamaStoryExtractor)
-        self.assertEqual(parse_stage.canonical_parser.extractor.model, "llama3.1:8b")
+        self.assertEqual(parse_stage.canonical_parser.extractor.model, "qwen2.5:7b")
         self.assertEqual(parse_stage.canonical_parser.extractor.url, "http://localhost:11434")
 
     def test_runner_uses_configured_gpt_extractor(self) -> None:

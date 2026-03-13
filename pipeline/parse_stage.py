@@ -9,7 +9,7 @@ from engine.parser.story_parser import StoryParser
 from engine.parser.story_validator import validate_story_json
 from engine.world_state import resolve_scene_characters, resolve_scene_location
 from engine.context import PipelineContext
-from engine.logging_utils import get_stage_logger
+from engine.logging_utils import compact_json, get_stage_logger
 from engine.stage import PipelineStage
 from providers.story_parser_provider import PlaceholderStoryParserProvider, StoryParserProvider
 
@@ -72,8 +72,10 @@ class StoryParseStage(PipelineStage):
                 len(context.story_input),
             )
         story_json = self.canonical_parser.parse(context.story_input)
+        self._log_story_snapshot(logger, "extractor_output", story_json)
         story_json["title"] = context.story_title or story_json.get("title", "Untitled Story")
         validated = validate_story_json(story_json)
+        self._log_story_snapshot(logger, "validated_story_json", validated)
         if isinstance(extractor, OllamaStoryExtractor):
             logger.info(
                 "parse_story Ollama completed model=%s input_chars=%s scene_count=%s character_count=%s elapsed=%.2fs",
@@ -90,7 +92,7 @@ class StoryParseStage(PipelineStage):
             return dict(extractor_kwargs)
 
         resolved = {
-            "model": getattr(getattr(self.parser_provider, "settings", None), "ollama_model", "llama3.1:8b"),
+            "model": getattr(getattr(self.parser_provider, "settings", None), "ollama_model", "qwen2.5:7b"),
             "url": getattr(getattr(self.parser_provider, "settings", None), "ollama_url", "http://127.0.0.1:11434"),
             "timeout_seconds": getattr(
                 getattr(self.parser_provider, "settings", None),
@@ -107,7 +109,7 @@ class StoryParseStage(PipelineStage):
         return resolved
 
     def _apply_fallback(self, context: PipelineContext, reason: str, logger) -> None:  # noqa: ANN001
-        logger.warning("Primary parser degraded; falling back to placeholder parser: %s", reason)
+        logger.warning("Primary parser degraded; entering placeholder parser fallback: %s", reason)
         context.record_warning(f"Parser degraded; fallback used: {reason}")
         context.metadata["parser_quality"] = "degraded"
         context.metadata.setdefault("parser_degradation_reasons", []).append(reason)
@@ -118,6 +120,7 @@ class StoryParseStage(PipelineStage):
         )
         context.story_json = validate_story_json(story_content_to_story_json(fallback_story))
         context.story_json["title"] = context.story_title or context.story_json.get("title", "Untitled Story")
+        self._log_story_snapshot(logger, "fallback_story_json", context.story_json)
         context.story = story_json_to_story_content(context.story_json, author=context.story_author)
         self._update_story_metadata(context)
 
@@ -144,3 +147,25 @@ class StoryParseStage(PipelineStage):
             for scene_location in [resolve_scene_location(scene, context.story.visual_bible)]
             for resolved_characters in [resolve_scene_characters(scene, context.story.visual_bible)]
         ]
+
+    def _log_story_snapshot(self, logger, label: str, story_json: dict) -> None:  # noqa: ANN001
+        if not isinstance(story_json, dict):
+            logger.info("parse_story snapshot=%s non_dict=%s", label, type(story_json).__name__)
+            return
+        scenes = story_json.get("scenes") if isinstance(story_json.get("scenes"), list) else []
+        characters = story_json.get("characters") if isinstance(story_json.get("characters"), list) else []
+        logger.info(
+            "parse_story snapshot=%s keys=%s title=%s style=%s character_count=%s scene_count=%s",
+            label,
+            sorted(story_json.keys()),
+            story_json.get("title"),
+            story_json.get("style"),
+            len(characters),
+            len(scenes),
+        )
+        if scenes:
+            logger.info(
+                "parse_story snapshot=%s first_scene=%s",
+                label,
+                compact_json(scenes[0], max_len=2000),
+            )

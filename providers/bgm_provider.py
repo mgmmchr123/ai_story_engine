@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 
 from config import ProviderSettings
-from models.scene_schema import Scene
+from models.scene_schema import Scene, scene_mood_value
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class RuleBasedBGMProvider(BGMProvider):
 
     def select(self, scene: Scene, params: dict[str, str], output_path: Path) -> Path:
         setting = str(params.get("setting") or scene.setting.value).strip().lower()
-        mood = scene.mood.value.strip().lower()
+        mood = scene_mood_value(scene.mood).strip().lower()
         candidate = self._select_candidate(setting=setting, mood=mood)
         if not candidate:
             logger.warning(

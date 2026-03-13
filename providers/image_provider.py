@@ -11,7 +11,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from config import ProviderSettings
-from models.scene_schema import Scene
+from models.scene_schema import Scene, scene_mood_value
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class PlaceholderImageProvider(ImageProvider):
                     f"scene_id={scene.scene_id}",
                     f"title={scene.title}",
                     f"setting={scene.setting.value}",
-                    f"mood={scene.mood.value}",
+                    f"mood={scene_mood_value(scene.mood)}",
                     f"prompt={prompt}",
                 ]
             ),

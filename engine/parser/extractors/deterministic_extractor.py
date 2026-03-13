@@ -32,7 +32,10 @@ class DeterministicStoryExtractor(BaseStoryExtractor):
             scenes = [
                 {
                     "scene_id": 1,
+                    "title": "Scene 1",
                     "location": default_location_id,
+                    "mood": "mysterious",
+                    "narration": "",
                     "duration_sec": 5,
                     "characters": [item["id"] for item in characters] or ["narrator"],
                     "camera": dict(_DEFAULT_CAMERA),
@@ -148,7 +151,10 @@ class DeterministicStoryExtractor(BaseStoryExtractor):
             scenes.append(
                 {
                     "scene_id": index,
+                    "title": f"Scene {index}",
                     "location": self._match_location(block, locations, default_location),
+                    "mood": self._infer_scene_mood(block),
+                    "narration": block.strip(),
                     "duration_sec": max(3, min(12, len(block.split()) // 3 or 5)),
                     "characters": scene_character_ids,
                     "camera": self._build_camera(block),
@@ -249,6 +255,18 @@ class DeterministicStoryExtractor(BaseStoryExtractor):
         if any(word in lowered for word in ("fear", "tremble", "dark", "whisper")):
             return "tense"
         return "neutral"
+
+    def _infer_scene_mood(self, text: str) -> str:
+        lowered = text.lower()
+        if any(word in lowered for word in ("battle", "charge", "triumph", "hero")):
+            return "heroic"
+        if any(word in lowered for word in ("laugh", "joke", "grin")):
+            return "humorous"
+        if any(word in lowered for word in ("fear", "shadow", "dark", "whisper", "mystery")):
+            return "mysterious"
+        if any(word in lowered for word in ("tense", "threat", "danger", "angry")):
+            return "tense"
+        return "mysterious"
 
     def _detect_style(self, text: str) -> str:
         lowered = text.lower()

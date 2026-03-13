@@ -38,6 +38,9 @@ def validate_scene_instruction(instruction: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "scene_id": int(scene_id),
+        "title": str(instruction.get("title") or f"Scene {int(scene_id)}").strip(),
+        "mood": str(instruction.get("mood") or "mysterious").strip(),
+        "narration": str(instruction.get("narration") or "").strip(),
         "image_prompt": image_prompt,
         "characters": [str(item) for item in instruction.get("characters", []) if str(item).strip()],
         "location": str(instruction.get("location") or ""),

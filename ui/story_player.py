@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from engine.world_state import resolve_scene_characters, resolve_scene_location
-from models.scene_schema import PipelineOutput, Scene, SceneAssets
+from models.scene_schema import PipelineOutput, Scene, SceneAssets, display_value, scene_mood_value
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +101,9 @@ class StoryPlayer:
         characters = resolve_scene_characters(scene, self.story.visual_bible)
         logger.info("  Scene ID: %s", scene.scene_id)
         logger.info("  Title: %s", scene.title)
-        logger.info("  Setting: %s", location["bgm_setting"])
-        logger.info("  Location: %s", location["location_name"])
-        logger.info("  Mood: %s", scene.mood.value)
+        logger.info("  Setting: %s", display_value(location["bgm_setting"]))
+        logger.info("  Location: %s", display_value(location["location_name"]))
+        logger.info("  Mood: %s", scene_mood_value(scene.mood))
         logger.info("  Characters: %s", ", ".join([item["name"] for item in characters]))
 
         assets = self.get_scene_assets(scene.scene_id)
@@ -130,7 +130,7 @@ class StoryPlayer:
                     "title": scene.title,
                     "setting": location["bgm_setting"],
                     "location_name": location["location_name"],
-                    "mood": scene.mood.value,
+                    "mood": scene_mood_value(scene.mood),
                     "characters": [item["name"] for item in characters],
                 }
             )

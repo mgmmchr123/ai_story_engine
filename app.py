@@ -7,7 +7,7 @@ from pathlib import Path
 
 from config import CONFIG_SAMPLE_STORY, ENGINE_SETTINGS, PROJECT_ROOT, SAMPLE_STORY_PATH
 from engine.world_state import resolve_scene_characters, resolve_scene_location
-from models.scene_schema import PipelineOutput
+from models.scene_schema import PipelineOutput, display_value, scene_mood_value
 from ui.story_player import PlaybackController, StoryPlayer
 
 os.environ["FFMPEG_BINARY"] = ENGINE_SETTINGS.providers.ffmpeg_binary_path
@@ -68,7 +68,12 @@ def play_story(pipeline_output: PipelineOutput) -> None:
         location = resolve_scene_location(scene, player.story.visual_bible)
         characters = resolve_scene_characters(scene, player.story.visual_bible)
         logger.info("[SCENE %s] %s", idx + 1, scene.title)
-        logger.info("Setting=%s Location=%s Mood=%s", location["bgm_setting"], location["location_name"], scene.mood.value)
+        logger.info(
+            "Setting=%s Location=%s Mood=%s",
+            display_value(location["bgm_setting"]),
+            display_value(location["location_name"]),
+            scene_mood_value(scene.mood),
+        )
         logger.info("Characters=%s", ", ".join([item["name"] for item in characters]))
         logger.info("Narration=%s", scene.narration_text[:120])
         assets = player.get_scene_assets(scene.scene_id)

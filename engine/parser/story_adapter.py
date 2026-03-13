@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
+from engine.logging_utils import compact_json, preview_text
 from models.scene_schema import (
     Character,
     CharacterData,
@@ -12,6 +14,7 @@ from models.scene_schema import (
     LocationDefinition,
     Mood,
     Scene,
+    scene_mood_value,
     Setting,
     StoryContent,
     StoryVisualBible,
@@ -19,6 +22,7 @@ from models.scene_schema import (
 )
 
 _STYLE_VALUES = {"anime", "cartoon", "realistic"}
+logger = logging.getLogger(__name__)
 
 
 def story_json_to_story_content(story_json: dict[str, Any], *, author: str = "Anonymous") -> StoryContent:
@@ -62,7 +66,8 @@ def story_json_to_story_content(story_json: dict[str, Any], *, author: str = "An
         actions = _list_of_dicts(scene_json.get("actions"))
         dialogue = _list_of_dicts(scene_json.get("dialogue"))
         location_id = str(scene_json.get("location") or "unknown_location")
-        description = _scene_description(actions, dialogue)
+        narration = str(scene_json.get("narration") or scene_json.get("narration_text") or "").strip()
+        description = str(scene_json.get("description") or _scene_description(actions, dialogue) or narration)
         active_character_ids = [str(item) for item in scene_json.get("characters", []) if str(item).strip()]
         characters = [
             CharacterData(
@@ -74,21 +79,39 @@ def story_json_to_story_content(story_json: dict[str, Any], *, author: str = "An
             for character_id in active_character_ids
         ] or [CharacterData(name="Narrator", type=Character.NPC, emotion="neutral", action="present")]
 
-        scenes.append(
-            Scene(
-                scene_id=scene_id,
-                title=f"Scene {scene_id}",
-                description=description,
-                characters=characters,
-                setting=_setting_from_location(location_id),
-                mood=_mood_from_scene(actions, dialogue),
-                narration_text=_narration_from_scene(actions, dialogue, description),
-                location_id=location_id,
-                active_character_ids=active_character_ids,
-                action_description=description,
-                camera_description=_camera_description(scene_json.get("camera")),
-            )
+        adapted_scene = Scene(
+            scene_id=scene_id,
+            title=str(scene_json.get("title") or scene_json.get("scene_title") or f"Scene {scene_id}"),
+            description=description,
+            characters=characters,
+            setting=_setting_from_location(location_id),
+            mood=_resolved_scene_mood(scene_json.get("mood"), actions, dialogue),
+            narration_text=narration or _narration_from_scene(actions, dialogue, description),
+            location_id=location_id,
+            active_character_ids=active_character_ids,
+            action_description=str(scene_json.get("action_description") or description),
+            camera_description=_camera_description(scene_json.get("camera")),
+            state_delta=str(scene_json.get("state_delta") or ""),
         )
+        if index == 1:
+            logger.info(
+                "story_json_to_story_content first_scene raw_keys=%s title_present=%s mood_present=%s narration_present=%s raw=%s",
+                sorted(scene_json.keys()),
+                bool(str(scene_json.get("title") or "").strip()),
+                bool(str(scene_json.get("mood") or "").strip()),
+                bool(str(scene_json.get("narration") or scene_json.get("narration_text") or "").strip()),
+                compact_json(scene_json, max_len=2000),
+            )
+            logger.info(
+                "story_json_to_story_content first_scene adapted title=%s mood=%s narration_chars=%s narration_preview=%s location_id=%s active_character_ids=%s",
+                adapted_scene.title,
+                scene_mood_value(adapted_scene.mood),
+                len(adapted_scene.narration_text),
+                preview_text(adapted_scene.narration_text, max_len=120),
+                adapted_scene.location_id,
+                adapted_scene.active_character_ids,
+            )
+        scenes.append(adapted_scene)
 
     return StoryContent(
         title=title,
@@ -167,13 +190,17 @@ def story_content_to_story_json(story: StoryContent) -> dict[str, Any]:
         scenes.append(
             {
                 "scene_id": scene.scene_id,
+                "title": scene.title or f"Scene {scene.scene_id}",
                 "location": scene.location_id or scene.setting.value,
+                "mood": scene_mood_value(scene.mood),
+                "narration": scene.narration_text,
                 "duration_sec": max(3, len(scene.narration_text.split()) // 3 or 5),
                 "characters": scene_character_ids or ["narrator"],
                 "camera": {
                     "shot": _camera_shot(scene.camera_description),
                     "angle": _camera_angle(scene.camera_description),
                 },
+                "image_prompt": "",
                 "actions": [
                     {
                         "character": scene_character_ids[0] if scene_character_ids else "narrator",
@@ -218,6 +245,22 @@ def _mood_from_scene(actions: list[dict[str, Any]], dialogue: list[dict[str, Any
     if "happy" in normalized:
         return Mood.CALM
     return Mood.MYSTERIOUS
+
+
+def _mood_from_value(value: Any) -> Mood | None:
+    normalized = str(value or "").strip().lower().replace(" ", "_")
+    for item in Mood:
+        if item.value == normalized:
+            return item
+    return None
+
+
+def _resolved_scene_mood(value: Any, actions: list[dict[str, Any]], dialogue: list[dict[str, Any]]) -> Mood | str:
+    normalized = str(value or "").strip().lower().replace(" ", "_")
+    if normalized:
+        enum_value = _mood_from_value(normalized)
+        return enum_value or normalized
+    return _mood_from_scene(actions, dialogue)
 
 
 def _scene_description(actions: list[dict[str, Any]], dialogue: list[dict[str, Any]]) -> str:

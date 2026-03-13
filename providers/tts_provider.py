@@ -10,6 +10,7 @@ import time
 import wave
 
 from config import ProviderSettings
+from engine.logging_utils import preview_text
 from models.scene_schema import Scene
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class PlaceholderTTSProvider(TTSProvider):
     """Creates deterministic tone audio for local testing."""
 
     def generate(self, scene: Scene, narration_text: str, output_path: Path) -> Path:
-        del narration_text
+        _log_tts_input(scene=scene, narration_text=narration_text, provider="placeholder")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         sample_rate = 16000
         duration_seconds = 1
@@ -52,6 +53,7 @@ class PiperTTSProvider(TTSProvider):
 
     def generate(self, scene: Scene, narration_text: str, output_path: Path) -> Path:
         started = time.monotonic()
+        _log_tts_input(scene=scene, narration_text=narration_text, provider="piper")
         logger.info(
             "[TTS] provider=piper scene_id=%s output=%s model=%s language=%s voice=%s",
             scene.scene_id,
@@ -152,3 +154,16 @@ def build_tts_provider(settings: ProviderSettings) -> TTSProvider:
     if settings.tts_provider == "piper":
         return PiperTTSProvider(settings=settings, fallback_provider=PlaceholderTTSProvider())
     raise ValueError(f"Unsupported TTS provider: {settings.tts_provider}")
+
+
+def _log_tts_input(scene: Scene, narration_text: str, provider: str) -> None:
+    narration_length = len(narration_text or "")
+    logger.info(
+        "[TTS] provider=%s scene_id=%s narration_chars=%s preview=%s",
+        provider,
+        scene.scene_id,
+        narration_length,
+        preview_text(narration_text, max_len=120),
+    )
+    if not (narration_text or "").strip():
+        logger.warning("[TTS] provider=%s scene_id=%s narration_text is empty", provider, scene.scene_id)

@@ -151,6 +151,38 @@ class StoryValidatorTests(unittest.TestCase):
         self.assertEqual(scene["camera"], {"shot": "medium shot", "angle": "eye level"})
         self.assertEqual(scene["duration_sec"], 5)
         self.assertEqual(scene["characters"], ["narrator"])
+        self.assertEqual(scene["title"], "Scene 7")
+        self.assertEqual(scene["mood"], "mysterious")
+        self.assertEqual(scene["narration"], "")
+
+    def test_validator_maps_compatible_scene_fields_into_canonical_schema(self) -> None:
+        normalized = validate_story_json(
+            {
+                "story_id": "story",
+                "title": "Compat",
+                "style": "anime",
+                "characters": ["Aria"],
+                "scenes": [
+                    {
+                        "scene_id": 1,
+                        "scene_title": "Forest Entry",
+                        "place": "Dark Forest",
+                        "tone": "tense",
+                        "cast": "Aria",
+                        "description": "Aria enters the forest.",
+                        "visual_prompt": "moonlit forest trail",
+                    }
+                ],
+            }
+        )
+
+        scene = normalized["scenes"][0]
+        self.assertEqual(scene["title"], "Forest Entry")
+        self.assertEqual(scene["location"], "dark_forest")
+        self.assertEqual(scene["mood"], "tense")
+        self.assertEqual(scene["characters"], ["aria"])
+        self.assertEqual(scene["narration"], "Aria enters the forest.")
+        self.assertEqual(scene["image_prompt"], "moonlit forest trail")
 
     def test_validator_inserts_missing_top_level_arrays(self) -> None:
         normalized = validate_story_json({"story_id": "story", "title": "Top Level", "style": "anime"})
@@ -199,9 +231,13 @@ class SceneBuilderContractTests(unittest.TestCase):
         instruction = build_scene(
             {
                 "scene_id": 1,
+                "title": "Arrival",
                 "location": "ancient_tavern",
+                "mood": "heroic",
+                "narration": "Zhangsan enters the tavern and greets the room.",
                 "duration_sec": 5,
                 "characters": ["zhangsan"],
+                "image_prompt": "anime tavern doorway",
                 "camera": {"shot": "medium shot", "angle": "eye level"},
                 "actions": [
                     {
@@ -217,7 +253,10 @@ class SceneBuilderContractTests(unittest.TestCase):
         )
 
         self.assertEqual(instruction["scene_id"], 1)
-        self.assertTrue(instruction["image_prompt"])
+        self.assertEqual(instruction["title"], "Arrival")
+        self.assertEqual(instruction["mood"], "heroic")
+        self.assertEqual(instruction["narration"], "Zhangsan enters the tavern and greets the room.")
+        self.assertEqual(instruction["image_prompt"], "anime tavern doorway")
         self.assertEqual(instruction["characters"], ["zhangsan"])
         self.assertEqual(instruction["location"], "ancient_tavern")
         self.assertEqual(instruction["camera"]["shot"], "medium shot")
@@ -225,6 +264,30 @@ class SceneBuilderContractTests(unittest.TestCase):
         self.assertEqual(instruction["duration_sec"], 5)
         self.assertEqual(len(instruction["dialogue"]), 1)
         self.assertEqual(len(instruction["actions"]), 1)
+
+    def test_scene_builder_constructs_visual_first_prompt_without_narration_fallback(self) -> None:
+        instruction = build_scene(
+            {
+                "scene_id": 2,
+                "title": "Forest Resolve",
+                "location": "ancient_forest_path",
+                "mood": "determined_and_focused",
+                "narration": "Aria remembers her promise while walking deeper into the forest.",
+                "duration_sec": 5,
+                "characters": ["aria", "old_guardian"],
+                "camera": {"shot": "wide_shot", "angle": "low_angle"},
+                "actions": [{"character": "aria", "type": "walking", "description": "Aria advances along the foggy path"}],
+                "dialogue": [],
+                "style": "anime",
+            }
+        )
+
+        self.assertIn("location: ancient forest path", instruction["image_prompt"])
+        self.assertIn("mood: determined and focused", instruction["image_prompt"])
+        self.assertIn("visible characters: aria, old guardian", instruction["image_prompt"])
+        self.assertIn("visual action: Aria advances along the foggy path", instruction["image_prompt"])
+        self.assertIn("camera: wide shot, low angle", instruction["image_prompt"])
+        self.assertNotIn("Aria remembers her promise", instruction["image_prompt"])
 
 
 class SceneInstructionValidatorTests(unittest.TestCase):
@@ -236,6 +299,8 @@ class SceneInstructionValidatorTests(unittest.TestCase):
 
         self.assertEqual(validated["scene_id"], 1)
         self.assertTrue(validated["image_prompt"])
+        self.assertTrue(validated["title"])
+        self.assertTrue(validated["mood"])
         self.assertEqual(validated["characters"], ["zhangsan"])
         self.assertEqual(validated["location"], "ancient_tavern")
         self.assertEqual(validated["camera"]["shot"], "medium shot")
@@ -347,6 +412,9 @@ class StoryAdapterRoundTripTests(unittest.TestCase):
         self.assertEqual(round_tripped["title"], "Round Trip")
         self.assertEqual(round_tripped["style"], "anime")
         self.assertEqual(len(round_tripped["scenes"]), 1)
+        self.assertEqual(round_tripped["scenes"][0]["title"], "Scene 1")
+        self.assertEqual(round_tripped["scenes"][0]["mood"], "calm")
+        self.assertEqual(round_tripped["scenes"][0]["narration"], "Hero enters the tavern.")
         self.assertEqual(round_tripped["characters"][0]["id"], "hero_001")
         self.assertEqual(round_tripped["locations"][0]["id"], "ancient_tavern")
 
