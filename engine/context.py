@@ -19,6 +19,7 @@ class RunPaths:
     """Filesystem paths for a run."""
 
     run_dir: Path
+    scenes_dir: Path
     images_dir: Path
     audio_dir: Path
     bgm_dir: Path

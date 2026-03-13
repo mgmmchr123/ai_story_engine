@@ -48,6 +48,7 @@ class RenderStageAudioResilienceTests(unittest.TestCase):
                 config=ENGINE_SETTINGS,
                 paths=RunPaths(
                     run_dir=root,
+                    scenes_dir=root / "scenes",
                     images_dir=root / "images",
                     audio_dir=root / "audio",
                     bgm_dir=root / "bgm",

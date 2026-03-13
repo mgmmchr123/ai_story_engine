@@ -27,6 +27,7 @@ class OutputSettings:
     """Filesystem layout for run outputs."""
 
     base_output_dir: Path = RUNS_DIR
+    scenes_dirname: str = "scenes"
     images_dirname: str = "images"
     audio_dirname: str = "audio"
     bgm_dirname: str = "bgm"

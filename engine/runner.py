@@ -144,6 +144,7 @@ class PipelineRunner:
 
     def _resolve_paths(self, run_id: str) -> RunPaths:
         run_dir = self.config.output.base_output_dir / run_id
+        scenes_dir = run_dir / self.config.output.scenes_dirname
         images_dir = run_dir / self.config.output.images_dirname
         audio_dir = run_dir / self.config.output.audio_dirname
         bgm_dir = run_dir / self.config.output.bgm_dirname
@@ -153,6 +154,7 @@ class PipelineRunner:
         manifest_path = run_dir / self.config.output.manifest_filename
         return RunPaths(
             run_dir=run_dir,
+            scenes_dir=scenes_dir,
             images_dir=images_dir,
             audio_dir=audio_dir,
             bgm_dir=bgm_dir,
@@ -173,6 +175,7 @@ class PipelineRunner:
         actual_run_id = run_id or datetime.now(UTC).strftime("%Y%m%d_%H%M%S") + f"_{uuid.uuid4().hex[:8]}"
         paths = self._resolve_paths(actual_run_id)
 
+        paths.scenes_dir.mkdir(parents=True, exist_ok=True)
         paths.images_dir.mkdir(parents=True, exist_ok=True)
         paths.audio_dir.mkdir(parents=True, exist_ok=True)
         paths.bgm_dir.mkdir(parents=True, exist_ok=True)
