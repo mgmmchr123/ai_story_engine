@@ -63,8 +63,10 @@ class SceneRenderStage(PipelineStage):
             scene_result.bgm_parameters = build_bgm_prompt(scene, context.story.visual_bible)
             if scene_instruction:
                 scene_result.bgm_parameters["duration_seconds"] = int(
-                    scene_instruction.get("duration") or scene_result.bgm_parameters.get("duration_seconds", 180)
+                    scene_instruction.get("duration_sec") or scene_result.bgm_parameters.get("duration_seconds", 180)
                 )
+                scene_result.bgm_parameters["camera_shot"] = str(scene_instruction["camera"]["shot"])
+                scene_result.bgm_parameters["camera_angle"] = str(scene_instruction["camera"]["angle"])
 
             attempts = context.config.retry.scene_attempts
             timeout = context.config.retry.scene_timeout_seconds

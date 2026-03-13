@@ -1,6 +1,7 @@
 """Parse stage implementation."""
 
-from engine.parser.story_parser import story_content_to_story_json, story_json_to_story_content
+from engine.parser.story_adapter import story_content_to_story_json, story_json_to_story_content
+from engine.parser.story_validator import validate_story_json
 from engine.world_state import resolve_scene_characters, resolve_scene_location
 from engine.context import PipelineContext
 from engine.logging_utils import get_stage_logger
@@ -30,7 +31,7 @@ class StoryParseStage(PipelineStage):
                 title=context.story_title,
                 author=context.story_author,
             )
-            context.story_json = story_content_to_story_json(parsed_story)
+            context.story_json = validate_story_json(story_content_to_story_json(parsed_story))
             context.story_json["title"] = context.story_title
             context.story = story_json_to_story_content(context.story_json, author=context.story_author)
             self._update_story_metadata(context)
@@ -60,7 +61,7 @@ class StoryParseStage(PipelineStage):
             title=context.story_title,
             author=context.story_author,
         )
-        context.story_json = story_content_to_story_json(fallback_story)
+        context.story_json = validate_story_json(story_content_to_story_json(fallback_story))
         context.story_json["title"] = context.story_title
         context.story = story_json_to_story_content(context.story_json, author=context.story_author)
         self._update_story_metadata(context)

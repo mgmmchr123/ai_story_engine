@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+_DEFAULT_CAMERA = {"shot": "medium shot", "angle": "eye level"}
+
 
 def build_scene(scene_json: dict[str, Any]) -> dict[str, Any]:
     """Convert schema scene data into provider-friendly generation instructions."""
 
     location = str(scene_json.get("location") or "unknown location").replace("_", " ")
     camera = scene_json.get("camera") if isinstance(scene_json.get("camera"), dict) else {}
-    shot = str(camera.get("shot") or "medium shot")
-    angle = str(camera.get("angle") or "eye level")
+    shot = str(camera.get("shot") or _DEFAULT_CAMERA["shot"])
+    angle = str(camera.get("angle") or _DEFAULT_CAMERA["angle"])
     actions = scene_json.get("actions") if isinstance(scene_json.get("actions"), list) else []
     action_description = ""
     if actions and isinstance(actions[0], dict):
@@ -28,10 +30,10 @@ def build_scene(scene_json: dict[str, Any]) -> dict[str, Any]:
         "scene_id": int(scene_json.get("scene_id") or 0),
         "image_prompt": ", ".join(prompt_parts),
         "characters": [str(item) for item in scene_json.get("characters", []) if str(item).strip()],
-        "camera": shot,
-        "duration": int(scene_json.get("duration_sec") or 5),
-        "location": str(scene_json.get("location") or ""),
-        "dialogue": scene_json.get("dialogue", []),
+        "location": str(scene_json.get("location") or "unknown_location"),
+        "camera": {"shot": shot, "angle": angle},
+        "duration_sec": int(scene_json.get("duration_sec") or 5),
+        "dialogue": [item for item in scene_json.get("dialogue", []) if isinstance(item, dict)],
         "actions": actions,
     }
 

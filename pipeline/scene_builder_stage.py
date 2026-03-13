@@ -2,6 +2,7 @@
 
 from engine.context import PipelineContext
 from engine.logging_utils import get_stage_logger
+from engine.scene_builder.scene_instruction_validator import validate_scene_instructions
 from engine.stage import PipelineStage
 from engine.scene_builder.scene_builder import build_scenes
 
@@ -21,6 +22,6 @@ class SceneBuilderStage(PipelineStage):
         if not context.story_json:
             raise ValueError("story.json must be available before scene_builder stage.")
 
-        context.scene_instructions = build_scenes(context.story_json)
+        context.scene_instructions = validate_scene_instructions(build_scenes(context.story_json))
         context.metadata["scene_instruction_count"] = len(context.scene_instructions)
         logger.info("Built %s scene instructions", len(context.scene_instructions))
