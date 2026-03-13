@@ -7,6 +7,7 @@ from pathlib import Path
 
 from config import ENGINE_SETTINGS, ParserSettings
 from engine.context import PipelineContext, RunPaths
+from engine.parser.extractors import DeterministicStoryExtractor, GPTStoryExtractor, OllamaStoryExtractor
 from pipeline.parse_stage import StoryParseStage
 from providers.story_parser_provider import OllamaStoryParserProvider
 
@@ -23,6 +24,42 @@ class _InvalidJSONResponse:
 
 
 class ParseStageFallbackTests(unittest.TestCase):
+    def test_parse_stage_defaults_to_deterministic_extractor(self) -> None:
+        stage = StoryParseStage(parser_provider=OllamaStoryParserProvider(ParserSettings()))
+
+        self.assertIsInstance(stage.canonical_parser.extractor, DeterministicStoryExtractor)
+
+    def test_parse_stage_accepts_explicit_deterministic_extractor_kind(self) -> None:
+        stage = StoryParseStage(
+            parser_provider=OllamaStoryParserProvider(ParserSettings()),
+            extractor_kind="deterministic",
+        )
+
+        self.assertIsInstance(stage.canonical_parser.extractor, DeterministicStoryExtractor)
+
+    def test_parse_stage_wires_ollama_extractor(self) -> None:
+        stage = StoryParseStage(
+            parser_provider=OllamaStoryParserProvider(ParserSettings()),
+            extractor_kind="ollama",
+        )
+
+        self.assertIsInstance(stage.canonical_parser.extractor, OllamaStoryExtractor)
+
+    def test_parse_stage_wires_gpt_extractor(self) -> None:
+        stage = StoryParseStage(
+            parser_provider=OllamaStoryParserProvider(ParserSettings()),
+            extractor_kind="gpt",
+        )
+
+        self.assertIsInstance(stage.canonical_parser.extractor, GPTStoryExtractor)
+
+    def test_parse_stage_raises_on_invalid_extractor_kind(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported story extractor: invalid"):
+            StoryParseStage(
+                parser_provider=OllamaStoryParserProvider(ParserSettings()),
+                extractor_kind="invalid",
+            )
+
     def test_parse_stage_primary_path_sets_canonical_and_preserves_generated_title_when_input_title_empty(self) -> None:
         stage = StoryParseStage(parser_provider=OllamaStoryParserProvider(ParserSettings()))
 

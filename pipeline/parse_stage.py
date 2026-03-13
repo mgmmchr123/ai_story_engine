@@ -1,5 +1,6 @@
 """Parse stage implementation."""
 
+from engine.parser.extractor_factory import build_story_extractor
 from engine.parser.story_adapter import story_content_to_story_json, story_json_to_story_content
 from engine.parser.story_parser import StoryParser
 from engine.parser.story_validator import validate_story_json
@@ -13,10 +14,16 @@ from providers.story_parser_provider import PlaceholderStoryParserProvider, Stor
 class StoryParseStage(PipelineStage):
     """Parses raw story text into structured scene domain objects."""
 
-    def __init__(self, parser_provider: StoryParserProvider):
+    def __init__(
+        self,
+        parser_provider: StoryParserProvider,
+        extractor_kind: str = "deterministic",
+        extractor_kwargs: dict | None = None,
+    ):
         # Retained for constructor compatibility and future provider-based fallback expansion.
         self.parser_provider = parser_provider
-        self.canonical_parser = StoryParser()
+        extractor = build_story_extractor(extractor_kind, **(extractor_kwargs or {}))
+        self.canonical_parser = StoryParser(extractor=extractor)
         self.fallback_provider = PlaceholderStoryParserProvider()
 
     @property
