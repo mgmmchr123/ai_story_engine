@@ -31,7 +31,7 @@ def summarize_scene_results(context: PipelineContext) -> dict:
         "total_scenes": len(scenes),
         "completed": sum(1 for item in scenes if item["status"] == "completed"),
         "failed": sum(1 for item in scenes if item["status"] == "failed"),
-        "skipped": sum(1 for item in scenes if item["status"] == "skipped"),
+        "skipped": sum(1 for item in scenes if item["skipped"]),
         "scene_ids": [item["scene_id"] for item in scenes],
         "scenes": scenes,
     }

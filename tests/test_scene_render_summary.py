@@ -76,6 +76,21 @@ class SceneRenderSummaryTests(unittest.TestCase):
             self.assertEqual(summary["scene_ids"], [1, 2, 3])
             self.assertEqual([item["scene_id"] for item in summary["scenes"]], [1, 2, 3])
 
+    def test_summarize_scene_results_counts_skipped_from_scene_boolean(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            context = _build_context(Path(tmp))
+            context.scene_results = {
+                1: SceneRenderResult(scene_id=1, status="completed", skipped=True, assets=SceneAssets()),
+            }
+
+            summary = summarize_scene_results(context)
+
+            self.assertEqual(summary["total_scenes"], 1)
+            self.assertEqual(summary["completed"], 1)
+            self.assertEqual(summary["failed"], 0)
+            self.assertEqual(summary["skipped"], 1)
+            self.assertTrue(summary["scenes"][0]["skipped"])
+
     def test_summarize_scene_results_includes_rerun_metadata_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             context = _build_context(Path(tmp))
