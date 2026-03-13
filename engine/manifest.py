@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from engine.context import PipelineContext
+from engine.reporting.run_report import build_run_report
 from models.scene_schema import PipelineOutput, SceneAssets, SceneRenderResult, StoryContent
 
 
@@ -39,6 +40,7 @@ class StoryRunManifest:
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    run_report: dict[str, Any] = field(default_factory=dict)
 
 
 def _utc_now() -> str:
@@ -87,6 +89,7 @@ def build_manifest(context: PipelineContext) -> StoryRunManifest:
         warnings=list(context.warnings),
         errors=list(context.errors),
         metadata=dict(context.metadata),
+        run_report=build_run_report(context),
     )
 
 
@@ -122,6 +125,7 @@ def load_manifest(path: Path) -> StoryRunManifest | None:
         warnings=data.get("warnings", []),
         errors=data.get("errors", []),
         metadata=data.get("metadata", {}),
+        run_report=data.get("run_report", {}),
     )
 
 

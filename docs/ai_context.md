@@ -1,7 +1,7 @@
 # ai_story_engine - AI Context
 
-## Current phase
-Phase: rerun/reporting foundation
+## Project snapshot
+Project snapshot: ai_story_engine
 
 ## Core pipeline
 raw text
@@ -19,24 +19,26 @@ raw text
 - GPTStoryExtractor (stub)
 
 ## Config
-- parser.extractor_kind
-- parser.extractor_kwargs
+parser.extractor_kind
+parser.extractor_kwargs
 
 ## Artifacts
-- scene_{id}.json
+scene_{id}.json
 
 ## Rerun stack
-- prepare_scene_rerun
-- bootstrap_scene_rerun_context
-- rerun_selected_scenes
+prepare_scene_rerun
+bootstrap_scene_rerun_context
+rerun_selected_scenes
 
 ## Reporting
-- scene_render_summary
+scene_render_summary
+run_report
 
-## Stable contracts
-- canonical story_json
-- scene_instruction schema
-- scene_instruction cache naming: scene_{id:03d}.json
-
-## Current focus
-- run-level reporting
+## Capabilities
+- scene artifact cache
+- artifact lookup helpers
+- selective scene rendering
+- scene-level rerun
+- rerun metadata traceability
+- scene execution summary
+- run-level report
