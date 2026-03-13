@@ -25,7 +25,7 @@ class SceneRenderStage(PipelineStage):
 
     @property
     def name(self) -> str:
-        return "render_scenes"
+        return "image_generation"
 
     def run(self, context: PipelineContext) -> None:
         if not context.story:
@@ -33,10 +33,13 @@ class SceneRenderStage(PipelineStage):
 
         stage_logger = get_stage_logger(__name__, context.run_id, self.name)
 
+        instruction_map = {item.get("scene_id"): item for item in context.scene_instructions if isinstance(item, dict)}
+
         for scene in context.story.scenes[: context.config.max_scenes]:
             scene_logger = get_stage_logger(__name__, context.run_id, self.name, scene.scene_id)
             started = datetime.now(UTC)
             scene_result = context.scene_results.get(scene.scene_id) or SceneRenderResult(scene_id=scene.scene_id)
+            scene_instruction = instruction_map.get(scene.scene_id, {})
             scene_result.started_at = started.isoformat()
 
             image_path = context.paths.images_dir / f"scene_{scene.scene_id:03d}{context.config.providers.image_extension}"
@@ -52,9 +55,16 @@ class SceneRenderStage(PipelineStage):
                 continue
 
             scene_result.skipped = False
-            scene_result.image_prompt = build_image_prompt(scene, context.story.visual_bible)
+            scene_result.image_prompt = str(
+                scene_instruction.get("image_prompt")
+                or build_image_prompt(scene, context.story.visual_bible)
+            )
             scene_result.narration_prompt = build_narration_prompt(scene)
             scene_result.bgm_parameters = build_bgm_prompt(scene, context.story.visual_bible)
+            if scene_instruction:
+                scene_result.bgm_parameters["duration_seconds"] = int(
+                    scene_instruction.get("duration") or scene_result.bgm_parameters.get("duration_seconds", 180)
+                )
 
             attempts = context.config.retry.scene_attempts
             timeout = context.config.retry.scene_timeout_seconds

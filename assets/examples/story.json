@@ -1,0 +1,53 @@
+{
+  "story_id": "lanterns_over_the_tavern",
+  "title": "Lanterns Over The Tavern",
+  "style": "anime",
+  "characters": [
+    {
+      "id": "zhangsan",
+      "name": "Zhangsan",
+      "appearance": "young swordsman with a blue travel cloak",
+      "voice": "steady"
+    },
+    {
+      "id": "innkeeper_mei",
+      "name": "Innkeeper Mei",
+      "appearance": "middle-aged innkeeper with a warm smile and red apron",
+      "voice": "warm"
+    }
+  ],
+  "locations": [
+    {
+      "id": "ancient_tavern",
+      "description": "ancient tavern interior with lantern light and wooden beams",
+      "time_of_day": "night"
+    }
+  ],
+  "scenes": [
+    {
+      "scene_id": 1,
+      "location": "ancient_tavern",
+      "duration_sec": 5,
+      "characters": ["zhangsan", "innkeeper_mei"],
+      "camera": {
+        "shot": "medium shot",
+        "angle": "eye level"
+      },
+      "actions": [
+        {
+          "character": "zhangsan",
+          "type": "enter",
+          "emotion": "neutral",
+          "description": "Zhangsan pushes open the tavern door and scans the room."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "innkeeper_mei",
+          "text": "You look like someone chasing trouble.",
+          "emotion": "curious"
+        }
+      ]
+    }
+  ]
+}

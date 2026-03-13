@@ -52,6 +52,8 @@ class PipelineContext:
     paths: RunPaths
     resume: bool = False
     story: StoryContent | None = None
+    story_json: dict[str, Any] | None = None
+    scene_instructions: list[dict[str, Any]] = field(default_factory=list)
     scene_results: dict[int, SceneRenderResult] = field(default_factory=dict)
     stage_state: dict[str, StageExecutionState] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)

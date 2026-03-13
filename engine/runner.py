@@ -23,6 +23,7 @@ from models.scene_schema import PipelineOutput
 from pipeline.final_audio_stage import FinalStoryAudioStage
 from pipeline.parse_stage import StoryParseStage
 from pipeline.render_stage import SceneRenderStage
+from pipeline.scene_builder_stage import SceneBuilderStage
 from providers.bgm_provider import build_bgm_provider
 from providers.image_provider import build_image_provider
 from providers.story_parser_provider import build_story_parser_provider
@@ -126,6 +127,7 @@ class PipelineRunner:
         bgm_provider = build_bgm_provider(self.config.providers)
         return [
             StoryParseStage(parser_provider=story_parser_provider),
+            SceneBuilderStage(),
             SceneRenderStage(
                 image_provider=image_provider,
                 tts_provider=tts_provider,

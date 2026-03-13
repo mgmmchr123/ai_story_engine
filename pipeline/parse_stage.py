@@ -1,5 +1,6 @@
 """Parse stage implementation."""
 
+from engine.parser.story_parser import story_content_to_story_json, story_json_to_story_content
 from engine.world_state import resolve_scene_characters, resolve_scene_location
 from engine.context import PipelineContext
 from engine.logging_utils import get_stage_logger
@@ -19,16 +20,19 @@ class StoryParseStage(PipelineStage):
         return "parse_story"
 
     def should_skip(self, context: PipelineContext) -> bool:
-        return context.story is not None
+        return context.story_json is not None or context.story is not None
 
     def run(self, context: PipelineContext) -> None:
         logger = get_stage_logger(__name__, context.run_id, self.name)
         try:
-            context.story = self.parser_provider.parse(
+            parsed_story = self.parser_provider.parse(
                 story_text=context.story_input,
                 title=context.story_title,
                 author=context.story_author,
             )
+            context.story_json = story_content_to_story_json(parsed_story)
+            context.story_json["title"] = context.story_title
+            context.story = story_json_to_story_content(context.story_json, author=context.story_author)
             self._update_story_metadata(context)
         except Exception as exc:  # noqa: BLE001
             self._apply_fallback(
@@ -51,14 +55,20 @@ class StoryParseStage(PipelineStage):
         context.record_warning(f"Parser degraded; fallback used: {reason}")
         context.metadata["parser_quality"] = "degraded"
         context.metadata.setdefault("parser_degradation_reasons", []).append(reason)
-        context.story = self.fallback_provider.parse(
+        fallback_story = self.fallback_provider.parse(
             story_text=context.story_input,
             title=context.story_title,
             author=context.story_author,
         )
+        context.story_json = story_content_to_story_json(fallback_story)
+        context.story_json["title"] = context.story_title
+        context.story = story_json_to_story_content(context.story_json, author=context.story_author)
         self._update_story_metadata(context)
 
     def _update_story_metadata(self, context: PipelineContext) -> None:
+        if context.story_json:
+            context.metadata["story_json"] = context.story_json
+            context.metadata["story_schema_version"] = "1.0"
         if context.story.visual_bible:
             context.metadata["visual_bible_summary"] = {
                 "character_count": len(context.story.visual_bible.characters),
