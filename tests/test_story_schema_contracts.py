@@ -111,6 +111,23 @@ class StoryParserDefaultingTests(unittest.TestCase):
 
 
 class StoryValidatorTests(unittest.TestCase):
+    def test_validator_filters_obvious_stopword_character_names(self) -> None:
+        normalized = validate_story_json(
+            {
+                "story_id": "story",
+                "title": "Character Filter",
+                "style": "anime",
+                "characters": [
+                    {"id": "the", "name": "The"},
+                    {"id": "hero", "name": "Aria"},
+                    {"id": "with", "name": "With"},
+                ],
+                "scenes": [],
+            }
+        )
+
+        self.assertEqual([item["name"] for item in normalized["characters"]], ["Aria"])
+
     def test_validator_normalizes_malformed_camera_and_missing_duration(self) -> None:
         normalized = validate_story_json(
             {

@@ -33,6 +33,8 @@ def mix_scene_audio(
     bgm_path: Path | None,
     output_path: Path,
     bgm_reduction_db: float,
+    *,
+    trailing_padding_ms: int = 500,
 ) -> Path | None:
     """Mix narration and BGM, with graceful degradation for missing assets/tools."""
     narration_exists = bool(narration_path and narration_path.exists())
@@ -59,20 +61,27 @@ def mix_scene_audio(
     try:
         narration_segment = AudioSegment.from_file(narration_path) if narration_exists else None  # type: ignore[arg-type]
         bgm_segment = AudioSegment.from_file(bgm_path) if bgm_exists else None  # type: ignore[arg-type]
+        target_duration_ms = _resolve_target_duration_ms(
+            narration_segment=narration_segment,
+            bgm_segment=bgm_segment,
+            trailing_padding_ms=trailing_padding_ms,
+        )
 
         if narration_segment and bgm_segment:
-            lowered_bgm = bgm_segment - abs(float(bgm_reduction_db))
-            if len(lowered_bgm) < len(narration_segment):
-                loops = ceil(len(narration_segment) / max(len(lowered_bgm), 1))
-                lowered_bgm = lowered_bgm * loops
-            lowered_bgm = lowered_bgm[: len(narration_segment)]
-            mixed = lowered_bgm.overlay(narration_segment)
+            lowered_bgm = _fit_bgm_to_duration(
+                segment=bgm_segment - abs(float(bgm_reduction_db)),
+                target_duration_ms=target_duration_ms,
+            )
+            mixed = lowered_bgm.overlay(_pad_narration(narration_segment, target_duration_ms))
             return _export_audiosegment(mixed, output_path)
 
         if narration_segment:
-            return _export_audiosegment(narration_segment, output_path)
+            return _export_audiosegment(_pad_narration(narration_segment, target_duration_ms), output_path)
         if bgm_segment:
-            return _export_audiosegment(bgm_segment, output_path)
+            return _export_audiosegment(
+                _fit_bgm_to_duration(segment=bgm_segment, target_duration_ms=target_duration_ms),
+                output_path,
+            )
         return None
     except Exception as exc:  # noqa: BLE001
         logger.warning("[AUDIO] pydub mix failed (%s); using file-copy fallback", exc)
@@ -130,3 +139,26 @@ def _copy_fallback(narration_path: Path | None, bgm_path: Path | None, output_pa
         shutil.copy2(bgm_path, fallback)
         return fallback
     return None
+
+
+def _resolve_target_duration_ms(narration_segment, bgm_segment, trailing_padding_ms: int) -> int:  # noqa: ANN001
+    if narration_segment is not None:
+        return len(narration_segment) + max(0, int(trailing_padding_ms))
+    if bgm_segment is not None:
+        return len(bgm_segment)
+    return 0
+
+
+def _fit_bgm_to_duration(segment, target_duration_ms: int):  # noqa: ANN001
+    if target_duration_ms <= 0:
+        return segment
+    if len(segment) < target_duration_ms:
+        loops = ceil(target_duration_ms / max(len(segment), 1))
+        segment = segment * loops
+    return segment[:target_duration_ms]
+
+
+def _pad_narration(segment, target_duration_ms: int):  # noqa: ANN001
+    if target_duration_ms <= len(segment):
+        return segment[:target_duration_ms]
+    return segment + AudioSegment.silent(duration=target_duration_ms - len(segment))

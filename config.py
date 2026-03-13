@@ -17,7 +17,7 @@ class RetrySettings:
     """Retry and timeout controls for pipeline execution."""
 
     stage_attempts: int = 2
-    stage_timeout_seconds: int = 90
+    stage_timeout_seconds: int = 300
     scene_attempts: int = 2
     scene_timeout_seconds: int = 60
 
@@ -90,10 +90,10 @@ class ParserSettings:
     """Story parser provider settings."""
 
     provider: str = "ollama"
-    extractor_kind: str = "deterministic"
+    extractor_kind: str = "ollama"
     extractor_kwargs: dict[str, object] = field(default_factory=dict)
     ollama_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen2.5:7b"
+    ollama_model: str = "llama3.1:8b"
     ollama_timeout_seconds: int = 90
     ollama_temperature: float = 0.0
 

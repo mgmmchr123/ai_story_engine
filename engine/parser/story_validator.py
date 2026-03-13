@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 _DEFAULT_CAMERA = {"shot": "medium shot", "angle": "eye level"}
+_CHARACTER_STOPWORDS = {"the", "in", "with", "a", "an", "and", "of", "to", "for", "on", "at", "from"}
 _DEFAULT_SCENE = {
     "scene_id": 1,
     "location": "unknown_location",
@@ -40,10 +41,13 @@ def _normalize_characters(value: Any) -> list[dict[str, str]]:
     for index, item in enumerate(value, start=1):
         if not isinstance(item, dict):
             continue
+        name = str(item.get("name") or f"Character {index}").strip()
+        if not _is_meaningful_character_name(name):
+            continue
         items.append(
             {
                 "id": str(item.get("id") or f"character_{index}"),
-                "name": str(item.get("name") or f"Character {index}"),
+                "name": name,
                 "appearance": str(item.get("appearance") or ""),
                 "voice": str(item.get("voice") or "calm"),
             }
@@ -113,3 +117,15 @@ def _normalize_dict_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def _is_meaningful_character_name(name: str) -> bool:
+    stripped = name.strip()
+    if not stripped:
+        return False
+    lowered = stripped.lower()
+    if lowered in _CHARACTER_STOPWORDS:
+        return False
+    if len(stripped) == 1 and lowered.isalpha():
+        return False
+    return any(character.isalpha() for character in stripped)

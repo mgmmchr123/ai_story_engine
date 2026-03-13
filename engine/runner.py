@@ -93,6 +93,14 @@ class VideoExportStage(PipelineStage):
             except Exception as exc:  # noqa: BLE001
                 stage_logger.warning("Duration probe failed for final story audio: %s", exc)
 
+        scene_media_total = sum(
+            result.media_duration_seconds
+            for result in context.scene_results.values()
+            if result.media_duration_seconds > 0
+        )
+        if scene_media_total > 0:
+            return float(scene_media_total), "sum(scene effective media durations)"
+
         narration_total = 0.0
         narration_count = 0
         for narration_path in sorted(context.paths.audio_dir.glob("scene_*.wav")):
@@ -125,11 +133,20 @@ class PipelineRunner:
         image_provider = build_image_provider(self.config.providers)
         tts_provider = build_tts_provider(self.config.providers)
         bgm_provider = build_bgm_provider(self.config.providers)
+        extractor_kwargs = dict(self.config.parser.extractor_kwargs)
+        if self.config.parser.extractor_kind == "ollama":
+            extractor_kwargs = {
+                "model": self.config.parser.ollama_model,
+                "url": self.config.parser.ollama_url,
+                "timeout_seconds": self.config.parser.ollama_timeout_seconds,
+                "temperature": self.config.parser.ollama_temperature,
+                **extractor_kwargs,
+            }
         return [
             StoryParseStage(
                 parser_provider=story_parser_provider,
                 extractor_kind=self.config.parser.extractor_kind,
-                extractor_kwargs=self.config.parser.extractor_kwargs,
+                extractor_kwargs=extractor_kwargs,
             ),
             SceneBuilderStage(),
             SceneRenderStage(
@@ -203,7 +220,7 @@ class PipelineRunner:
         return context
 
     def _run_with_timeout(self, stage: PipelineStage, context: PipelineContext) -> None:
-        timeout = self.config.retry.stage_timeout_seconds
+        timeout = stage.timeout_seconds(context) or self.config.retry.stage_timeout_seconds
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(stage.run, context)
             try:

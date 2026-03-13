@@ -29,7 +29,10 @@ class StoryPlayer:
         self.output = pipeline_output
         self.story = pipeline_output.story
         self._assets_by_scene = {result.scene_id: result.assets for result in pipeline_output.scene_results}
-        self.state = PlaybackState(total_duration=pipeline_output.total_duration_seconds)
+        total_duration = pipeline_output.total_duration_seconds or sum(
+            result.media_duration_seconds for result in pipeline_output.scene_results if result.media_duration_seconds > 0
+        )
+        self.state = PlaybackState(total_duration=total_duration)
 
         logger.info("[PLAYER] Initialized player for '%s'", self.story.title)
         logger.info("[PLAYER] Total scenes: %s", len(self.story.scenes))

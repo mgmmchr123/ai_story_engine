@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from config import ENGINE_SETTINGS
 from engine.context import PipelineContext, RunPaths
-from models.scene_schema import Mood, Scene, Setting, StoryContent
+from models.scene_schema import Mood, Scene, SceneAssets, SceneRenderResult, Setting, StoryContent
 from pipeline.render_stage import SceneRenderStage
 from providers.bgm_provider import BGMProvider
 from providers.image_provider import ImageProvider
@@ -181,6 +181,46 @@ class RenderStageAudioResilienceTests(unittest.TestCase):
 
             self.assertEqual(sorted(context.scene_results), [2])
             self.assertFalse(any(result.status == "failed" for scene_id, result in context.scene_results.items() if scene_id != 2))
+
+    def test_completed_scene_outputs_are_not_rerendered_on_subsequent_stage_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = _build_render_context(root, [1])
+            image_path = root / "images" / "scene_001.png"
+            narration_path = root / "audio" / "scene_001.wav"
+            mixed_path = root / "mixed" / "scene_001.mp3"
+            bgm_path = root / "bgm" / "scene_001.mp3"
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+            narration_path.parent.mkdir(parents=True, exist_ok=True)
+            mixed_path.parent.mkdir(parents=True, exist_ok=True)
+            bgm_path.parent.mkdir(parents=True, exist_ok=True)
+            image_path.write_bytes(b"image")
+            narration_path.write_bytes(b"narration")
+            mixed_path.write_bytes(b"mixed")
+            bgm_path.write_bytes(b"bgm")
+            context.scene_results[1] = SceneRenderResult(
+                scene_id=1,
+                status="completed",
+                assets=SceneAssets(
+                    image_path=str(image_path),
+                    narration_path=str(narration_path),
+                    bgm_path=str(bgm_path),
+                    mixed_audio_path=str(mixed_path),
+                ),
+            )
+
+            class _ImageShouldNotRun(ImageProvider):
+                def generate(self, scene: Scene, prompt: str, output_path: Path) -> Path:
+                    raise AssertionError("image generation should have been skipped")
+
+            stage = SceneRenderStage(
+                image_provider=_ImageShouldNotRun(),
+                tts_provider=_TTSOk(),
+                bgm_provider=_BGMFail(),
+            )
+            stage.run(context)
+
+            self.assertTrue(context.scene_results[1].skipped)
 
 
 if __name__ == "__main__":

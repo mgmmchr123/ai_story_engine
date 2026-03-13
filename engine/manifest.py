@@ -69,11 +69,7 @@ def build_manifest(context: PipelineContext) -> StoryRunManifest:
         for stage_name, state in context.stage_state.items()
     }
 
-    total_duration = float(context.metadata.get("final_video_duration_seconds") or 0.0)
-    if total_duration <= 0 and context.completed_at:
-        start = datetime.fromisoformat(context.started_at)
-        end = datetime.fromisoformat(context.completed_at)
-        total_duration = (end - start).total_seconds()
+    total_duration = _resolve_total_duration_seconds(context)
 
     return StoryRunManifest(
         run_id=context.run_id,
@@ -140,11 +136,7 @@ def pipeline_output_from_context(context: PipelineContext) -> PipelineOutput:
     )
 
     scene_results = sorted(context.scene_results.values(), key=lambda item: item.scene_id)
-    total_duration = float(context.metadata.get("final_video_duration_seconds") or 0.0)
-    if total_duration <= 0 and context.completed_at:
-        start = datetime.fromisoformat(context.started_at)
-        end = datetime.fromisoformat(context.completed_at)
-        total_duration = (end - start).total_seconds()
+    total_duration = _resolve_total_duration_seconds(context)
 
     return PipelineOutput(
         run_id=context.run_id,
@@ -185,3 +177,23 @@ def scene_result_from_manifest(data: dict[str, Any]) -> SceneRenderResult:
         started_at=data.get("started_at", ""),
         completed_at=data.get("completed_at", ""),
     )
+
+
+def _resolve_total_duration_seconds(context: PipelineContext) -> float:
+    total_duration = float(context.metadata.get("final_video_duration_seconds") or 0.0)
+    if total_duration > 0:
+        return total_duration
+
+    scene_media_total = sum(
+        result.media_duration_seconds
+        for result in context.scene_results.values()
+        if result.media_duration_seconds > 0
+    )
+    if scene_media_total > 0:
+        return float(scene_media_total)
+
+    if context.completed_at:
+        start = datetime.fromisoformat(context.started_at)
+        end = datetime.fromisoformat(context.completed_at)
+        return (end - start).total_seconds()
+    return 0.0

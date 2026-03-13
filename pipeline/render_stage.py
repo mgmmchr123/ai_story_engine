@@ -8,6 +8,7 @@ from engine.cache.scene_instruction_index import resolve_scene_instruction_path
 from engine.context import PipelineContext
 from engine.logging_utils import get_stage_logger
 from engine.stage import PipelineStage
+from engine.video_exporter import get_media_duration
 from models.scene_schema import Scene, SceneRenderResult
 from pipeline.audio_mixer import mix_scene_audio
 from pipeline.prompt_builder import build_bgm_prompt, build_image_prompt, build_narration_prompt
@@ -27,6 +28,15 @@ class SceneRenderStage(PipelineStage):
     @property
     def name(self) -> str:
         return "image_generation"
+
+    def timeout_seconds(self, context: PipelineContext) -> int | None:
+        scene_count = sum(1 for scene in context.story.scenes[: context.config.max_scenes] if self._should_render_scene(scene, context))
+        if scene_count <= 0:
+            return context.config.retry.stage_timeout_seconds
+        return max(
+            context.config.retry.stage_timeout_seconds,
+            scene_count * context.config.retry.scene_timeout_seconds + 30,
+        )
 
     def run(self, context: PipelineContext) -> None:
         if not context.story:
@@ -96,6 +106,7 @@ class SceneRenderStage(PipelineStage):
                         bgm_path=bgm_path,
                         mixed_path=mixed_path,
                         bgm_reduction_db=context.config.providers.bgm_mix_reduction_db,
+                        ffprobe_bin=context.config.providers.ffprobe_binary_path,
                     )
                     scene_result.status = "completed"
                     scene_result.error = None
@@ -134,8 +145,6 @@ class SceneRenderStage(PipelineStage):
         bgm_path: Path,
         mixed_path: Path,
     ) -> bool:
-        if not context.resume:
-            return False
         if scene_result.status not in {"completed", "skipped"}:
             return False
         if not (image_path.exists() and narration_path.exists() and mixed_path.exists()):
@@ -153,6 +162,7 @@ class SceneRenderStage(PipelineStage):
         bgm_path: Path,
         mixed_path: Path,
         bgm_reduction_db: float,
+        ffprobe_bin: str | None,
     ) -> None:
         scene_result.assets.image_path = str(
             self.image_provider.generate(scene, scene_result.image_prompt, image_path)
@@ -188,6 +198,7 @@ class SceneRenderStage(PipelineStage):
         except Exception as exc:  # noqa: BLE001
             scene_result.warnings.append(f"Scene mix failed: {exc}")
             scene_result.assets.mixed_audio_path = str(narration_output) if narration_output.exists() else None
+        scene_result.media_duration_seconds = self._resolve_media_duration_seconds(scene_result, scene, ffprobe_bin)
 
     def _render_scene_with_timeout(
         self,
@@ -199,6 +210,7 @@ class SceneRenderStage(PipelineStage):
         bgm_path: Path,
         mixed_path: Path,
         bgm_reduction_db: float,
+        ffprobe_bin: str | None,
     ) -> None:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
@@ -210,8 +222,31 @@ class SceneRenderStage(PipelineStage):
                 bgm_path,
                 mixed_path,
                 bgm_reduction_db,
+                ffprobe_bin,
             )
             try:
                 future.result(timeout=timeout_seconds)
             except FutureTimeoutError as exc:
                 raise TimeoutError(f"Scene render timed out after {timeout_seconds}s") from exc
+
+    def _resolve_media_duration_seconds(
+        self,
+        scene_result: SceneRenderResult,
+        scene: Scene,
+        ffprobe_bin: str | None,
+    ) -> float:
+        candidates = [
+            scene_result.assets.mixed_audio_path,
+            scene_result.assets.narration_path,
+            scene_result.assets.bgm_path,
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                duration = get_media_duration(Path(candidate), ffprobe_bin=ffprobe_bin)
+            except Exception:  # noqa: BLE001
+                continue
+            if duration > 0:
+                return float(duration)
+        return float(max(1, len(scene.narration_text.split()) // 2))

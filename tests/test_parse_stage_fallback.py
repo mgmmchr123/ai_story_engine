@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
+import json
 
 from config import ENGINE_SETTINGS, ParserSettings
 from engine.context import PipelineContext, RunPaths
@@ -24,10 +25,10 @@ class _InvalidJSONResponse:
 
 
 class ParseStageFallbackTests(unittest.TestCase):
-    def test_parse_stage_defaults_to_deterministic_extractor(self) -> None:
+    def test_parse_stage_defaults_to_ollama_extractor(self) -> None:
         stage = StoryParseStage(parser_provider=OllamaStoryParserProvider(ParserSettings()))
 
-        self.assertIsInstance(stage.canonical_parser.extractor, DeterministicStoryExtractor)
+        self.assertIsInstance(stage.canonical_parser.extractor, OllamaStoryExtractor)
 
     def test_parse_stage_accepts_explicit_deterministic_extractor_kind(self) -> None:
         stage = StoryParseStage(
@@ -60,7 +61,42 @@ class ParseStageFallbackTests(unittest.TestCase):
                 extractor_kind="invalid",
             )
 
-    def test_parse_stage_primary_path_sets_canonical_and_preserves_generated_title_when_input_title_empty(self) -> None:
+    @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
+    def test_parse_stage_primary_path_sets_canonical_and_preserves_generated_title_when_input_title_empty(self, mock_urlopen) -> None:
+        class _ValidJSONResponse:
+            def read(self) -> bytes:
+                return json.dumps(
+                    {
+                        "response": json.dumps(
+                            {
+                                "story_id": "lantern_story",
+                                "title": "Lanterns sway above the tavern door.",
+                                "style": "anime",
+                                "characters": [{"id": "mira", "name": "Mira"}],
+                                "locations": [{"id": "tavern", "description": "A lantern-lit tavern", "time_of_day": "night"}],
+                                "scenes": [
+                                    {
+                                        "scene_id": 1,
+                                        "location": "tavern",
+                                        "duration_sec": 5,
+                                        "characters": ["mira"],
+                                        "camera": {"shot": "medium shot", "angle": "eye level"},
+                                        "actions": [],
+                                        "dialogue": [],
+                                    }
+                                ],
+                            }
+                        )
+                    }
+                ).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        mock_urlopen.return_value = _ValidJSONResponse()
         stage = StoryParseStage(parser_provider=OllamaStoryParserProvider(ParserSettings()))
 
         with tempfile.TemporaryDirectory() as tmp:

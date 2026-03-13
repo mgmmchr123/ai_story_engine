@@ -12,7 +12,7 @@ from pipeline.parse_stage import StoryParseStage
 
 
 class RunnerParserExtractorConfigTests(unittest.TestCase):
-    def test_runner_defaults_to_deterministic_extractor(self) -> None:
+    def test_runner_defaults_to_ollama_extractor(self) -> None:
         config = replace(ENGINE_SETTINGS, parser=ParserSettings())
 
         with patch.object(runner_module, "ENGINE_SETTINGS", config):
@@ -20,12 +20,16 @@ class RunnerParserExtractorConfigTests(unittest.TestCase):
 
         parse_stage = runner._stages[0]
         self.assertIsInstance(parse_stage, StoryParseStage)
-        self.assertIsInstance(parse_stage.canonical_parser.extractor, DeterministicStoryExtractor)
+        self.assertIsInstance(parse_stage.canonical_parser.extractor, OllamaStoryExtractor)
 
     def test_runner_uses_configured_ollama_extractor(self) -> None:
         config = replace(
             ENGINE_SETTINGS,
-            parser=ParserSettings(extractor_kind="ollama"),
+            parser=ParserSettings(
+                extractor_kind="ollama",
+                ollama_model="llama3.1:8b",
+                ollama_url="http://localhost:11434",
+            ),
         )
 
         with patch.object(runner_module, "ENGINE_SETTINGS", config):
@@ -33,6 +37,8 @@ class RunnerParserExtractorConfigTests(unittest.TestCase):
 
         parse_stage = runner._stages[0]
         self.assertIsInstance(parse_stage.canonical_parser.extractor, OllamaStoryExtractor)
+        self.assertEqual(parse_stage.canonical_parser.extractor.model, "llama3.1:8b")
+        self.assertEqual(parse_stage.canonical_parser.extractor.url, "http://localhost:11434")
 
     def test_runner_uses_configured_gpt_extractor(self) -> None:
         config = replace(

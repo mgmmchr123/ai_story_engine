@@ -27,18 +27,16 @@ class OllamaStoryExtractorTests(unittest.TestCase):
     def test_successful_json_response_returns_story_dict(self, mock_urlopen) -> None:
         mock_urlopen.return_value = _FakeResponse(
             {
-                "message": {
-                    "content": json.dumps(
-                        {
-                            "story_id": "forest_story",
-                            "title": "Forest Story",
-                            "style": "anime",
-                            "characters": [],
-                            "locations": [],
-                            "scenes": [],
-                        }
-                    )
-                }
+                "response": json.dumps(
+                    {
+                        "story_id": "forest_story",
+                        "title": "Forest Story",
+                        "style": "anime",
+                        "characters": [],
+                        "locations": [],
+                        "scenes": [],
+                    }
+                )
             }
         )
         extractor = OllamaStoryExtractor()
@@ -56,13 +54,11 @@ class OllamaStoryExtractorTests(unittest.TestCase):
     def test_extractor_tolerates_wrapper_text_around_json_object(self, mock_urlopen) -> None:
         mock_urlopen.return_value = _FakeResponse(
             {
-                "message": {
-                    "content": (
-                        "Here is the canonical story_json:\n"
-                        '{"story_id":"wrapped_story","title":"Wrapped","style":"anime","characters":[],"locations":[],"scenes":[]}\n'
-                        "End."
-                    )
-                }
+                "response": (
+                    "Here is the canonical story_json:\n"
+                    '{"story_id":"wrapped_story","title":"Wrapped","style":"anime","characters":[],"locations":[],"scenes":[]}\n'
+                    "End."
+                )
             }
         )
         extractor = OllamaStoryExtractor()
@@ -74,7 +70,7 @@ class OllamaStoryExtractorTests(unittest.TestCase):
 
     @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
     def test_invalid_non_json_content_raises_clear_value_error(self, mock_urlopen) -> None:
-        mock_urlopen.return_value = _FakeResponse({"message": {"content": "not json at all"}})
+        mock_urlopen.return_value = _FakeResponse({"response": "not json at all"})
         extractor = OllamaStoryExtractor()
 
         with self.assertRaisesRegex(ValueError, "unusable non-JSON content"):
@@ -106,7 +102,7 @@ class OllamaStoryExtractorTests(unittest.TestCase):
 
     @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
     def test_invalid_json_envelope_raises_clear_value_error(self, mock_urlopen) -> None:
-        mock_urlopen.return_value = _FakeResponse({"message": {"content": "{}"}})
+        mock_urlopen.return_value = _FakeResponse({"response": "{}"})
         mock_urlopen.return_value._payload = b"{not valid json"
         extractor = OllamaStoryExtractor()
 
@@ -115,7 +111,7 @@ class OllamaStoryExtractorTests(unittest.TestCase):
 
     @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
     def test_missing_message_content_raises_clear_value_error(self, mock_urlopen) -> None:
-        mock_urlopen.return_value = _FakeResponse({"message": {}})
+        mock_urlopen.return_value = _FakeResponse({"done": True})
         extractor = OllamaStoryExtractor()
 
         with self.assertRaisesRegex(ValueError, "missing message.content"):
@@ -125,22 +121,20 @@ class OllamaStoryExtractorTests(unittest.TestCase):
     def test_model_and_url_wiring_are_passed_to_request(self, mock_urlopen) -> None:
         mock_urlopen.return_value = _FakeResponse(
             {
-                "message": {
-                    "content": json.dumps(
-                        {
-                            "story_id": "wired_story",
-                            "title": "Wired",
-                            "style": "anime",
-                            "characters": [],
-                            "locations": [],
-                            "scenes": [],
-                        }
-                    )
-                }
+                "response": json.dumps(
+                    {
+                        "story_id": "wired_story",
+                        "title": "Wired",
+                        "style": "anime",
+                        "characters": [],
+                        "locations": [],
+                        "scenes": [],
+                    }
+                )
             }
         )
         extractor = OllamaStoryExtractor(
-            model="qwen2.5:7b",
+            model="llama3.1:8b",
             url="http://localhost:11434",
             timeout_seconds=17,
             temperature=0.25,
@@ -151,18 +145,16 @@ class OllamaStoryExtractorTests(unittest.TestCase):
         request = mock_urlopen.call_args.args[0]
         timeout = mock_urlopen.call_args.kwargs["timeout"]
         payload = json.loads(request.data.decode("utf-8"))
-        self.assertEqual(request.full_url, "http://localhost:11434/api/chat")
+        self.assertEqual(request.full_url, "http://localhost:11434/api/generate")
         self.assertEqual(timeout, 17)
-        self.assertEqual(payload["model"], "qwen2.5:7b")
+        self.assertEqual(payload["model"], "llama3.1:8b")
         self.assertEqual(payload["options"]["temperature"], 0.25)
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["format"], "json")
-        self.assertIn("Output only one JSON object", payload["messages"][0]["content"])
-        self.assertIn("Do not use markdown fences", payload["messages"][0]["content"])
-        self.assertIn("story_id, title, style, characters, locations, scenes", payload["messages"][0]["content"])
-        self.assertIn("scene_id and duration_sec must be integers", payload["messages"][0]["content"])
-        self.assertIn("Return exactly one JSON object", payload["messages"][1]["content"])
-        self.assertIn("no commentary", payload["messages"][1]["content"])
+        self.assertIn("Return exactly one JSON object", payload["prompt"])
+        self.assertIn("Do not use markdown fences", payload["prompt"])
+        self.assertIn("story_id, title, style, characters, locations, scenes", payload["prompt"])
+        self.assertIn("scene_id and duration_sec must be integers", payload["prompt"])
 
 
 if __name__ == "__main__":
