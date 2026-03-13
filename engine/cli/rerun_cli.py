@@ -11,7 +11,11 @@ from engine.context import PipelineContext, RunPaths
 from engine.manifest import build_manifest, load_manifest, save_manifest
 from engine.parser.story_adapter import story_json_to_story_content
 from engine.reporting.run_report import build_run_report
-from engine.rerun import bootstrap_rerun_context_from_run_dir, rerun_selected_scenes
+from engine.rerun import (
+    bootstrap_rerun_context_from_run_dir,
+    rerun_selected_scenes,
+    resolve_rerun_scene_selection,
+)
 from pipeline.render_stage import SceneRenderStage
 from providers.bgm_provider import build_bgm_provider
 from providers.image_provider import build_image_provider
@@ -85,25 +89,15 @@ def _restore_story_from_manifest(context: PipelineContext, manifest: object) -> 
 def build_rerun_plan(context: PipelineContext, scene_ids: set[int]) -> dict:
     """Build a compact dry-run plan for a scene rerun request."""
 
-    requested_scene_ids = sorted(scene_ids)
-    available_scene_instruction_ids = sorted({
-        int(item["scene_id"])
-        for item in context.scene_instructions
-        if isinstance(item, dict) and isinstance(item.get("scene_id"), int)
-    })
-    available_scene_id_set = set(available_scene_instruction_ids)
-
-    return {
+    plan = {
         "mode": "dry-run",
         "run_id": context.run_id,
-        "requested_scene_ids": requested_scene_ids,
-        "available_scene_instruction_ids": available_scene_instruction_ids,
-        "missing_scene_ids": [scene_id for scene_id in requested_scene_ids if scene_id not in available_scene_id_set],
-        "will_rerun_scene_ids": [scene_id for scene_id in requested_scene_ids if scene_id in available_scene_id_set],
         "has_story": context.story is not None,
         "has_story_json": context.story_json is not None,
         "scene_instruction_count": len(context.scene_instructions),
     }
+    plan.update(resolve_rerun_scene_selection(context, scene_ids))
+    return plan
 
 
 def _build_rerun_context(run_dir: Path) -> PipelineContext:
@@ -136,6 +130,11 @@ def run_scene_rerun_cli(argv: list[str] | None = None) -> None:
         print(json.dumps(build_rerun_plan(context, args.scene_ids), indent=2))
         return
 
+    selection = resolve_rerun_scene_selection(context, args.scene_ids)
+    valid_scene_ids = set(selection["will_rerun_scene_ids"])
+    if not valid_scene_ids:
+        raise ValueError("No requested scene ids are available for rerun")
+
     if context.story is None:
         raise ValueError("Manifest does not contain restorable story state for rerun CLI")
 
@@ -144,7 +143,7 @@ def run_scene_rerun_cli(argv: list[str] | None = None) -> None:
         tts_provider=build_tts_provider(context.config.providers),
         bgm_provider=build_bgm_provider(context.config.providers),
     )
-    rerun_selected_scenes(context, args.scene_ids, render_stage, bootstrap=False)
+    rerun_selected_scenes(context, valid_scene_ids, render_stage, bootstrap=False)
     save_manifest(build_manifest(context), context.paths.manifest_path)
 
     print(json.dumps(build_run_report(context), indent=2))

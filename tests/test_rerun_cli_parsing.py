@@ -13,6 +13,7 @@ from engine.cache.scene_instruction_cache import save_scene_instruction
 from engine.cli.rerun_cli import build_rerun_plan, parse_scene_rerun_args, run_scene_rerun_cli
 from engine.context import PipelineContext, RunPaths
 from engine.manifest import StoryRunManifest, load_manifest, save_manifest
+from engine.rerun.scene_selection import resolve_rerun_scene_selection
 from models.scene_schema import SceneAssets, SceneRenderResult, StoryContent
 
 
@@ -98,6 +99,81 @@ class RerunCliParsingTests(unittest.TestCase):
         self.assertTrue(args.dry_run)
         self.assertEqual(args.scene_ids, {7})
 
+    def test_selection_helper_returns_full_hit_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = PipelineContext(
+                run_id=root.name,
+                story_input="",
+                story_title="Title",
+                story_author="Author",
+                config=ENGINE_SETTINGS,
+                paths=_run_paths(root),
+            )
+            context.scene_instructions = [_instruction(1), _instruction(2), _instruction(3)]
+
+            selection = resolve_rerun_scene_selection(context, {1, 3})
+
+            self.assertEqual(
+                selection,
+                {
+                    "requested_scene_ids": [1, 3],
+                    "available_scene_instruction_ids": [1, 2, 3],
+                    "missing_scene_ids": [],
+                    "will_rerun_scene_ids": [1, 3],
+                },
+            )
+
+    def test_selection_helper_returns_partial_miss_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = PipelineContext(
+                run_id=root.name,
+                story_input="",
+                story_title="Title",
+                story_author="Author",
+                config=ENGINE_SETTINGS,
+                paths=_run_paths(root),
+            )
+            context.scene_instructions = [_instruction(1), _instruction(2), _instruction(3)]
+
+            selection = resolve_rerun_scene_selection(context, {1, 4})
+
+            self.assertEqual(
+                selection,
+                {
+                    "requested_scene_ids": [1, 4],
+                    "available_scene_instruction_ids": [1, 2, 3],
+                    "missing_scene_ids": [4],
+                    "will_rerun_scene_ids": [1],
+                },
+            )
+
+    def test_selection_helper_returns_full_miss_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = PipelineContext(
+                run_id=root.name,
+                story_input="",
+                story_title="Title",
+                story_author="Author",
+                config=ENGINE_SETTINGS,
+                paths=_run_paths(root),
+            )
+            context.scene_instructions = [_instruction(1), _instruction(2), _instruction(3)]
+
+            selection = resolve_rerun_scene_selection(context, {4, 5})
+
+            self.assertEqual(
+                selection,
+                {
+                    "requested_scene_ids": [4, 5],
+                    "available_scene_instruction_ids": [1, 2, 3],
+                    "missing_scene_ids": [4, 5],
+                    "will_rerun_scene_ids": [],
+                },
+            )
+
     def test_invalid_combinations_require_scene_selection(self) -> None:
         with self.assertRaises(SystemExit):
             parse_scene_rerun_args(["--run-dir", "output/runs/run_123"])
@@ -156,6 +232,27 @@ class RerunCliParsingTests(unittest.TestCase):
             self.assertEqual(plan["missing_scene_ids"], [4])
             self.assertEqual(plan["will_rerun_scene_ids"], [1])
             self.assertEqual(plan["scene_instruction_count"], 3)
+
+    def test_dry_run_uses_shared_selection_logic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = PipelineContext(
+                run_id=root.name,
+                story_input="",
+                story_title="Title",
+                story_author="Author",
+                config=ENGINE_SETTINGS,
+                paths=_run_paths(root),
+            )
+            context.scene_instructions = [_instruction(1), _instruction(2), _instruction(3)]
+
+            plan = build_rerun_plan(context, {1, 4})
+            selection = resolve_rerun_scene_selection(context, {1, 4})
+
+            self.assertEqual(plan["requested_scene_ids"], selection["requested_scene_ids"])
+            self.assertEqual(plan["available_scene_instruction_ids"], selection["available_scene_instruction_ids"])
+            self.assertEqual(plan["missing_scene_ids"], selection["missing_scene_ids"])
+            self.assertEqual(plan["will_rerun_scene_ids"], selection["will_rerun_scene_ids"])
 
     def test_dry_run_does_not_require_render_execution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,6 +314,37 @@ class RerunCliParsingTests(unittest.TestCase):
             self.assertEqual(output["scene_summary"]["completed"], 1)
             self.assertEqual(output["scene_summary"]["scene_ids"], [1])
 
+    def test_real_execution_reruns_only_valid_scene_ids_for_mixed_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_scene_instruction(_instruction(1), root / "scenes")
+            save_scene_instruction(_instruction(2), root / "scenes")
+            save_manifest(_manifest_with_story(root), root / "manifest.json")
+
+            def _fake_rerun(context: PipelineContext, scene_ids: set[int], render_stage: object, *, bootstrap: bool) -> PipelineContext:
+                self.assertEqual(scene_ids, {1})
+                context.scene_results[1] = SceneRenderResult(scene_id=1, status="completed", assets=SceneAssets())
+                context.metadata["rerun"] = {"is_rerun": True, "scene_ids": sorted(scene_ids), "bootstrap": bootstrap}
+                return context
+
+            with (
+                patch("engine.cli.rerun_cli.build_image_provider", return_value=object()),
+                patch("engine.cli.rerun_cli.build_tts_provider", return_value=object()),
+                patch("engine.cli.rerun_cli.build_bgm_provider", return_value=object()),
+                patch("engine.cli.rerun_cli.SceneRenderStage", return_value=object()),
+                patch("engine.cli.rerun_cli.rerun_selected_scenes", side_effect=_fake_rerun),
+            ):
+                run_scene_rerun_cli(["--run-dir", str(root), "--scene-ids", "1,4"])
+
+    def test_real_execution_raises_when_all_requested_ids_are_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_scene_instruction(_instruction(1), root / "scenes")
+            save_manifest(_manifest_with_story(root), root / "manifest.json")
+
+            with self.assertRaisesRegex(ValueError, "No requested scene ids are available for rerun"):
+                run_scene_rerun_cli(["--run-dir", str(root), "--scene-id", "4"])
+
     def test_dry_run_does_not_rewrite_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -231,7 +359,7 @@ class RerunCliParsingTests(unittest.TestCase):
             after = (root / "manifest.json").read_text(encoding="utf-8")
             self.assertEqual(after, before)
 
-    def test_if_rerun_is_not_executed_manifest_content_is_unchanged(self) -> None:
+    def test_manifest_is_unchanged_when_story_restore_fails_before_rerun(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             save_scene_instruction(_instruction(1), root / "scenes")
