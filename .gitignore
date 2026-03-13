@@ -49,7 +49,3 @@ story_engine.log
 # Output files
 # Runtime output
 output/
-
-# Local patch scratch files
-*.patch
-
