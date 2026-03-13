@@ -47,8 +47,14 @@ class OllamaStoryExtractor(BaseStoryExtractor):
         try:
             with urllib_request.urlopen(request, timeout=self.timeout_seconds) as response:
                 raw = response.read().decode("utf-8")
+        except TimeoutError as exc:
+            raise RuntimeError("Ollama request timed out") from exc
         except urllib_error.URLError as exc:
+            if isinstance(exc.reason, TimeoutError):
+                raise RuntimeError("Ollama request timed out") from exc
             raise RuntimeError(f"Ollama request failed: {exc}") from exc
+        except UnicodeDecodeError as exc:
+            raise ValueError("Ollama returned invalid JSON envelope") from exc
 
         try:
             response_data = json.loads(raw)
@@ -67,7 +73,12 @@ class OllamaStoryExtractor(BaseStoryExtractor):
 
 def _build_system_prompt() -> str:
     return (
-        "You are a strict JSON service. Return only one JSON object and no extra text. "
+        "You are a strict JSON service. Output only one JSON object. "
+        "Do not use markdown fences. Do not add prose before or after JSON. "
+        'Use top-level fields exactly: story_id, title, style, characters, locations, scenes. '
+        "characters, locations, and scenes must always be arrays, even when empty. "
+        "scene_id and duration_sec must be integers. "
+        "style should be anime, cartoon, or realistic when possible. "
         'The object must follow canonical story_json shape: '
         '{"story_id":"string","title":"string","style":"anime|cartoon|realistic",'
         '"characters":[{"id":"string","name":"string","appearance":"string","voice":"string"}],'
@@ -80,7 +91,11 @@ def _build_system_prompt() -> str:
 
 
 def _build_user_prompt(text: str) -> str:
-    return "Convert the following story text into canonical story_json only.\nStory:\n" + text
+    return (
+        "Convert the following story text into canonical story_json only. "
+        "Return exactly one JSON object with no markdown fences and no commentary.\n"
+        "Story:\n" + text
+    )
 
 
 def _extract_json_object(content: str) -> Any:

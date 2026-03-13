@@ -89,6 +89,39 @@ class OllamaStoryExtractorTests(unittest.TestCase):
             extractor.extract("Network failure")
 
     @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
+    def test_timeout_failure_raises_clear_timeout_error(self, mock_urlopen) -> None:
+        mock_urlopen.side_effect = TimeoutError("timed out")
+        extractor = OllamaStoryExtractor()
+
+        with self.assertRaisesRegex(RuntimeError, "Ollama request timed out"):
+            extractor.extract("Timeout failure")
+
+    @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
+    def test_url_timeout_failure_raises_clear_timeout_error(self, mock_urlopen) -> None:
+        mock_urlopen.side_effect = urllib_error.URLError(TimeoutError("timed out"))
+        extractor = OllamaStoryExtractor()
+
+        with self.assertRaisesRegex(RuntimeError, "Ollama request timed out"):
+            extractor.extract("Timeout failure")
+
+    @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
+    def test_invalid_json_envelope_raises_clear_value_error(self, mock_urlopen) -> None:
+        mock_urlopen.return_value = _FakeResponse({"message": {"content": "{}"}})
+        mock_urlopen.return_value._payload = b"{not valid json"
+        extractor = OllamaStoryExtractor()
+
+        with self.assertRaisesRegex(ValueError, "invalid JSON envelope"):
+            extractor.extract("Bad envelope")
+
+    @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
+    def test_missing_message_content_raises_clear_value_error(self, mock_urlopen) -> None:
+        mock_urlopen.return_value = _FakeResponse({"message": {}})
+        extractor = OllamaStoryExtractor()
+
+        with self.assertRaisesRegex(ValueError, "missing message.content"):
+            extractor.extract("Missing content")
+
+    @patch("engine.parser.extractors.ollama_extractor.urllib_request.urlopen")
     def test_model_and_url_wiring_are_passed_to_request(self, mock_urlopen) -> None:
         mock_urlopen.return_value = _FakeResponse(
             {
@@ -124,6 +157,12 @@ class OllamaStoryExtractorTests(unittest.TestCase):
         self.assertEqual(payload["options"]["temperature"], 0.25)
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["format"], "json")
+        self.assertIn("Output only one JSON object", payload["messages"][0]["content"])
+        self.assertIn("Do not use markdown fences", payload["messages"][0]["content"])
+        self.assertIn("story_id, title, style, characters, locations, scenes", payload["messages"][0]["content"])
+        self.assertIn("scene_id and duration_sec must be integers", payload["messages"][0]["content"])
+        self.assertIn("Return exactly one JSON object", payload["messages"][1]["content"])
+        self.assertIn("no commentary", payload["messages"][1]["content"])
 
 
 if __name__ == "__main__":
