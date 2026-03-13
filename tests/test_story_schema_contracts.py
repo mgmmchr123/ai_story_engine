@@ -2,7 +2,13 @@
 
 import unittest
 
-from engine.parser.extractors import BaseStoryExtractor, DeterministicStoryExtractor
+from engine.parser.extractor_factory import build_story_extractor
+from engine.parser.extractors import (
+    BaseStoryExtractor,
+    DeterministicStoryExtractor,
+    GPTStoryExtractor,
+    OllamaStoryExtractor,
+)
 from engine.parser.story_adapter import story_content_to_story_json, story_json_to_story_content
 from engine.parser.story_parser import StoryParser
 from engine.parser.story_validator import validate_story_json
@@ -133,6 +139,39 @@ class StoryValidatorTests(unittest.TestCase):
         self.assertEqual(normalized["characters"], [])
         self.assertEqual(normalized["locations"], [])
         self.assertEqual(len(normalized["scenes"]), 1)
+
+
+class StoryExtractorFactoryTests(unittest.TestCase):
+    def test_build_story_extractor_returns_deterministic_extractor(self) -> None:
+        extractor = build_story_extractor("deterministic")
+
+        self.assertIsInstance(extractor, DeterministicStoryExtractor)
+
+    def test_build_story_extractor_returns_ollama_extractor(self) -> None:
+        extractor = build_story_extractor("ollama")
+
+        self.assertIsInstance(extractor, OllamaStoryExtractor)
+
+    def test_build_story_extractor_returns_gpt_extractor(self) -> None:
+        extractor = build_story_extractor("gpt")
+
+        self.assertIsInstance(extractor, GPTStoryExtractor)
+
+    def test_build_story_extractor_raises_for_unknown_kind(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported story extractor: unknown"):
+            build_story_extractor("unknown")
+
+    def test_ollama_extractor_stub_raises_not_implemented(self) -> None:
+        extractor = OllamaStoryExtractor()
+
+        with self.assertRaisesRegex(NotImplementedError, "OllamaStoryExtractor is not implemented yet"):
+            extractor.extract("story")
+
+    def test_gpt_extractor_stub_raises_not_implemented(self) -> None:
+        extractor = GPTStoryExtractor()
+
+        with self.assertRaisesRegex(NotImplementedError, "GPTStoryExtractor is not implemented yet"):
+            extractor.extract("story")
 
 
 class SceneBuilderContractTests(unittest.TestCase):
