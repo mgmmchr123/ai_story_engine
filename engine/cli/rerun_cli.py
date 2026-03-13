@@ -8,7 +8,7 @@ from pathlib import Path
 
 from config import ENGINE_SETTINGS
 from engine.context import PipelineContext, RunPaths
-from engine.manifest import load_manifest
+from engine.manifest import build_manifest, load_manifest, save_manifest
 from engine.parser.story_adapter import story_json_to_story_content
 from engine.reporting.run_report import build_run_report
 from engine.rerun import bootstrap_rerun_context_from_run_dir, rerun_selected_scenes
@@ -86,11 +86,11 @@ def build_rerun_plan(context: PipelineContext, scene_ids: set[int]) -> dict:
     """Build a compact dry-run plan for a scene rerun request."""
 
     requested_scene_ids = sorted(scene_ids)
-    available_scene_instruction_ids = sorted(
+    available_scene_instruction_ids = sorted({
         int(item["scene_id"])
         for item in context.scene_instructions
         if isinstance(item, dict) and isinstance(item.get("scene_id"), int)
-    )
+    })
     available_scene_id_set = set(available_scene_instruction_ids)
 
     return {
@@ -145,5 +145,6 @@ def run_scene_rerun_cli(argv: list[str] | None = None) -> None:
         bgm_provider=build_bgm_provider(context.config.providers),
     )
     rerun_selected_scenes(context, args.scene_ids, render_stage, bootstrap=False)
+    save_manifest(build_manifest(context), context.paths.manifest_path)
 
     print(json.dumps(build_run_report(context), indent=2))

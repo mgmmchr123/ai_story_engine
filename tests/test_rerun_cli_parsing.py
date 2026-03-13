@@ -6,13 +6,14 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from config import ENGINE_SETTINGS
 from engine.cache.scene_instruction_cache import save_scene_instruction
 from engine.cli.rerun_cli import build_rerun_plan, parse_scene_rerun_args, run_scene_rerun_cli
 from engine.context import PipelineContext, RunPaths
-from engine.manifest import StoryRunManifest, save_manifest
-from models.scene_schema import StoryContent
+from engine.manifest import StoryRunManifest, load_manifest, save_manifest
+from models.scene_schema import SceneAssets, SceneRenderResult, StoryContent
 
 
 def _instruction(scene_id: int) -> dict:
@@ -39,6 +40,36 @@ def _run_paths(root: Path) -> RunPaths:
         final_dir=root / "final",
         final_story_path=root / "final" / "story.mp3",
         manifest_path=root / "manifest.json",
+    )
+
+
+def _manifest_with_story(root: Path) -> StoryRunManifest:
+    return StoryRunManifest(
+        run_id=root.name,
+        status="completed",
+        story_title="Title",
+        story_author="Author",
+        scene_count=1,
+        started_at="2026-03-13T00:00:00+00:00",
+        completed_at="2026-03-13T00:00:00+00:00",
+        total_duration_seconds=0.0,
+        metadata={
+            "story_json": {
+                "story_id": "story",
+                "title": "Title",
+                "style": "anime",
+                "characters": [],
+                "locations": [],
+                "scenes": [
+                    {
+                        "scene_id": 1,
+                        "title": "Scene 1",
+                        "location": "ancient_tavern",
+                        "camera": {"shot": "medium shot", "angle": "eye level"},
+                    }
+                ],
+            }
+        },
     )
 
 
@@ -86,26 +117,7 @@ class RerunCliParsingTests(unittest.TestCase):
             root = Path(tmp)
             save_scene_instruction(_instruction(1), root / "scenes")
             save_scene_instruction(_instruction(2), root / "scenes")
-            manifest = StoryRunManifest(
-                run_id=root.name,
-                status="completed",
-                story_title="Title",
-                story_author="Author",
-                scene_count=0,
-                started_at="2026-03-13T00:00:00+00:00",
-                completed_at="2026-03-13T00:00:00+00:00",
-                total_duration_seconds=0.0,
-                metadata={
-                    "story_json": {
-                        "story_id": "story",
-                        "title": "Title",
-                        "style": "anime",
-                        "characters": [],
-                        "locations": [],
-                        "scenes": [],
-                    }
-                },
-            )
+            manifest = _manifest_with_story(root)
             save_manifest(manifest, root / "manifest.json")
 
             stdout = io.StringIO()
@@ -169,6 +181,70 @@ class RerunCliParsingTests(unittest.TestCase):
             self.assertFalse(plan["has_story"])
             self.assertFalse(plan["has_story_json"])
             self.assertEqual(plan["will_rerun_scene_ids"], [1])
+
+    def test_normal_rerun_writes_updated_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_scene_instruction(_instruction(1), root / "scenes")
+            save_manifest(_manifest_with_story(root), root / "manifest.json")
+
+            def _fake_rerun(context: PipelineContext, scene_ids: set[int], render_stage: object, *, bootstrap: bool) -> PipelineContext:
+                context.scene_results[1] = SceneRenderResult(
+                    scene_id=1,
+                    status="completed",
+                    assets=SceneAssets(image_path="images/scene_001.png", narration_path="audio/scene_001.wav"),
+                )
+                context.metadata["rerun"] = {"is_rerun": True, "scene_ids": sorted(scene_ids), "bootstrap": bootstrap}
+                return context
+
+            stdout = io.StringIO()
+            with (
+                patch("engine.cli.rerun_cli.build_image_provider", return_value=object()),
+                patch("engine.cli.rerun_cli.build_tts_provider", return_value=object()),
+                patch("engine.cli.rerun_cli.build_bgm_provider", return_value=object()),
+                patch("engine.cli.rerun_cli.SceneRenderStage", return_value=object()),
+                patch("engine.cli.rerun_cli.rerun_selected_scenes", side_effect=_fake_rerun),
+                redirect_stdout(stdout),
+            ):
+                run_scene_rerun_cli(["--run-dir", str(root), "--scene-id", "1"])
+
+            written = load_manifest(root / "manifest.json")
+            assert written is not None
+            self.assertEqual(written.run_report["run_id"], root.name)
+            self.assertEqual(written.run_report["scene_summary"]["completed"], 1)
+            self.assertEqual(written.run_report["scene_summary"]["scene_ids"], [1])
+            output = json.loads(stdout.getvalue())
+            self.assertEqual(output["scene_summary"]["completed"], 1)
+            self.assertEqual(output["scene_summary"]["scene_ids"], [1])
+
+    def test_dry_run_does_not_rewrite_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_scene_instruction(_instruction(1), root / "scenes")
+            save_manifest(_manifest_with_story(root), root / "manifest.json")
+            before = (root / "manifest.json").read_text(encoding="utf-8")
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                run_scene_rerun_cli(["--run-dir", str(root), "--scene-id", "1", "--dry-run"])
+
+            after = (root / "manifest.json").read_text(encoding="utf-8")
+            self.assertEqual(after, before)
+
+    def test_if_rerun_is_not_executed_manifest_content_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_scene_instruction(_instruction(1), root / "scenes")
+            save_manifest(_manifest_with_story(root), root / "manifest.json")
+            before = (root / "manifest.json").read_text(encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Manifest does not contain restorable story state"):
+                with patch("engine.cli.rerun_cli._restore_story_from_manifest", autospec=True) as restore_story:
+                    restore_story.side_effect = lambda context, manifest: None
+                    run_scene_rerun_cli(["--run-dir", str(root), "--scene-id", "1"])
+
+            after = (root / "manifest.json").read_text(encoding="utf-8")
+            self.assertEqual(after, before)
 
 
 if __name__ == "__main__":
