@@ -39,6 +39,8 @@ class SceneRenderStage(PipelineStage):
         metadata_paths = metadata_paths if isinstance(metadata_paths, list) else None
 
         for scene in context.story.scenes[: context.config.max_scenes]:
+            if not self._should_render_scene(scene, context):
+                continue
             scene_logger = get_stage_logger(__name__, context.run_id, self.name, scene.scene_id)
             started = datetime.now(UTC)
             scene_result = context.scene_results.get(scene.scene_id) or SceneRenderResult(scene_id=scene.scene_id)
@@ -117,6 +119,11 @@ class SceneRenderStage(PipelineStage):
         if any(result.status == "failed" for result in context.scene_results.values()):
             context.record_warning("One or more scenes failed during rendering.")
             stage_logger.warning("Render stage completed with scene failures")
+
+    def _should_render_scene(self, scene: Scene, context: PipelineContext) -> bool:
+        if context.selected_scene_ids is None:
+            return True
+        return scene.scene_id in context.selected_scene_ids
 
     def _can_resume(
         self,
