@@ -146,6 +146,7 @@ class SceneRenderResult:
     """Render result and metadata for a scene."""
 
     scene_id: int
+    scene_instruction_path: Optional[str] = None
     status: str = "pending"
     assets: SceneAssets = field(default_factory=SceneAssets)
     image_prompt: str = ""

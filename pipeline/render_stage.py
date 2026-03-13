@@ -34,12 +34,14 @@ class SceneRenderStage(PipelineStage):
         stage_logger = get_stage_logger(__name__, context.run_id, self.name)
 
         instruction_map = {item.get("scene_id"): item for item in context.scene_instructions if isinstance(item, dict)}
+        instruction_path_map = self._build_instruction_path_map(context)
 
         for scene in context.story.scenes[: context.config.max_scenes]:
             scene_logger = get_stage_logger(__name__, context.run_id, self.name, scene.scene_id)
             started = datetime.now(UTC)
             scene_result = context.scene_results.get(scene.scene_id) or SceneRenderResult(scene_id=scene.scene_id)
             scene_instruction = instruction_map.get(scene.scene_id, {})
+            scene_result.scene_instruction_path = instruction_path_map.get(scene.scene_id)
             scene_result.started_at = started.isoformat()
 
             image_path = context.paths.images_dir / f"scene_{scene.scene_id:03d}{context.config.providers.image_extension}"
@@ -108,6 +110,32 @@ class SceneRenderStage(PipelineStage):
         if any(result.status == "failed" for result in context.scene_results.values()):
             context.record_warning("One or more scenes failed during rendering.")
             stage_logger.warning("Render stage completed with scene failures")
+
+    def _build_instruction_path_map(self, context: PipelineContext) -> dict[int, str]:
+        raw_paths = context.metadata.get("scene_instruction_paths", [])
+        if not isinstance(raw_paths, list):
+            return {}
+
+        path_map: dict[int, str] = {}
+        for path_text in raw_paths:
+            path_str = str(path_text or "").strip()
+            if not path_str:
+                continue
+            scene_id = self._scene_id_from_artifact_path(path_str)
+            if scene_id is not None:
+                path_map[scene_id] = path_str
+        return path_map
+
+    def _scene_id_from_artifact_path(self, path_text: str) -> int | None:
+        artifact_path = Path(path_text)
+        stem = artifact_path.stem
+        if not stem.startswith("scene_"):
+            return None
+        suffix = stem.removeprefix("scene_")
+        try:
+            return int(suffix)
+        except ValueError:
+            return None
 
     def _can_resume(
         self,

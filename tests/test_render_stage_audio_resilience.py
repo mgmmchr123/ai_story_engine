@@ -37,6 +37,122 @@ class _BGMFail(BGMProvider):
 
 
 class RenderStageAudioResilienceTests(unittest.TestCase):
+    def test_scene_records_matching_instruction_artifact_path_when_metadata_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = PipelineContext(
+                run_id="run_audio_traceable",
+                story_input="line",
+                story_title="Story",
+                story_author="Author",
+                config=ENGINE_SETTINGS,
+                paths=RunPaths(
+                    run_dir=root,
+                    scenes_dir=root / "scenes",
+                    images_dir=root / "images",
+                    audio_dir=root / "audio",
+                    bgm_dir=root / "bgm",
+                    mixed_dir=root / "mixed",
+                    final_dir=root / "final",
+                    final_story_path=root / "final" / "story.mp3",
+                    manifest_path=root / "manifest.json",
+                ),
+            )
+            context.story = StoryContent(
+                title="Story",
+                author="Author",
+                description="Desc",
+                scenes=[
+                    Scene(
+                        scene_id=1,
+                        title="Scene 1",
+                        description="desc",
+                        characters=[],
+                        setting=Setting.FOREST,
+                        mood=Mood.MYSTERIOUS,
+                        narration_text="Hello world",
+                    )
+                ],
+            )
+            context.scene_instructions = [
+                {
+                    "scene_id": 1,
+                    "image_prompt": "forest prompt",
+                    "characters": [],
+                    "location": "forest",
+                    "camera": {"shot": "medium shot", "angle": "eye level"},
+                    "duration_sec": 5,
+                    "dialogue": [],
+                    "actions": [],
+                }
+            ]
+            context.metadata["scene_instruction_paths"] = [str(root / "scenes" / "scene_001.json")]
+
+            stage = SceneRenderStage(image_provider=_ImageOk(), tts_provider=_TTSOk(), bgm_provider=_BGMFail())
+            with patch("pipeline.audio_mixer.AudioSegment", None):
+                stage.run(context)
+
+            result = context.scene_results[1]
+            self.assertEqual(result.scene_instruction_path, str(root / "scenes" / "scene_001.json"))
+
+    def test_scene_rendering_still_works_without_instruction_paths_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = PipelineContext(
+                run_id="run_audio_no_metadata",
+                story_input="line",
+                story_title="Story",
+                story_author="Author",
+                config=ENGINE_SETTINGS,
+                paths=RunPaths(
+                    run_dir=root,
+                    scenes_dir=root / "scenes",
+                    images_dir=root / "images",
+                    audio_dir=root / "audio",
+                    bgm_dir=root / "bgm",
+                    mixed_dir=root / "mixed",
+                    final_dir=root / "final",
+                    final_story_path=root / "final" / "story.mp3",
+                    manifest_path=root / "manifest.json",
+                ),
+            )
+            context.story = StoryContent(
+                title="Story",
+                author="Author",
+                description="Desc",
+                scenes=[
+                    Scene(
+                        scene_id=1,
+                        title="Scene 1",
+                        description="desc",
+                        characters=[],
+                        setting=Setting.FOREST,
+                        mood=Mood.MYSTERIOUS,
+                        narration_text="Hello world",
+                    )
+                ],
+            )
+            context.scene_instructions = [
+                {
+                    "scene_id": 1,
+                    "image_prompt": "forest prompt",
+                    "characters": [],
+                    "location": "forest",
+                    "camera": {"shot": "medium shot", "angle": "eye level"},
+                    "duration_sec": 5,
+                    "dialogue": [],
+                    "actions": [],
+                }
+            ]
+
+            stage = SceneRenderStage(image_provider=_ImageOk(), tts_provider=_TTSOk(), bgm_provider=_BGMFail())
+            with patch("pipeline.audio_mixer.AudioSegment", None):
+                stage.run(context)
+
+            result = context.scene_results[1]
+            self.assertEqual(result.status, "completed")
+            self.assertIsNone(result.scene_instruction_path)
+
     def test_scene_completes_when_bgm_selection_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

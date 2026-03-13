@@ -166,6 +166,7 @@ def scene_result_from_manifest(data: dict[str, Any]) -> SceneRenderResult:
     )
     return SceneRenderResult(
         scene_id=data["scene_id"],
+        scene_instruction_path=data.get("scene_instruction_path"),
         status=data.get("status", "pending"),
         assets=assets,
         image_prompt=data.get("image_prompt", ""),
