@@ -1,5 +1,7 @@
 """Contract-focused tests for canonical story schema flow."""
 
+import json
+from pathlib import Path
 import unittest
 
 from engine.parser.extractor_factory import build_story_extractor
@@ -208,6 +210,22 @@ class SceneBuilderContractTests(unittest.TestCase):
 
 
 class SceneInstructionValidatorTests(unittest.TestCase):
+    def test_example_scene_instruction_file_matches_validator_contract(self) -> None:
+        example_path = Path("assets/examples/scene_instruction.json")
+        instruction = json.loads(example_path.read_text(encoding="utf-8"))
+
+        validated = validate_scene_instruction(instruction)
+
+        self.assertEqual(validated["scene_id"], 1)
+        self.assertTrue(validated["image_prompt"])
+        self.assertEqual(validated["characters"], ["zhangsan"])
+        self.assertEqual(validated["location"], "ancient_tavern")
+        self.assertEqual(validated["camera"]["shot"], "medium shot")
+        self.assertEqual(validated["camera"]["angle"], "eye level")
+        self.assertEqual(validated["duration_sec"], 5)
+        self.assertIsInstance(validated["dialogue"], list)
+        self.assertIsInstance(validated["actions"], list)
+
     def test_duplicate_scene_id_fails(self) -> None:
         with self.assertRaisesRegex(ValueError, "duplicate scene_id"):
             validate_scene_instructions(

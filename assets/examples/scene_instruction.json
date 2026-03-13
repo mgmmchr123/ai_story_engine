@@ -1,0 +1,26 @@
+{
+  "scene_id": 1,
+  "image_prompt": "ancient tavern interior at night, Zhangsan pushes open the tavern door, anime style, medium shot, eye level",
+  "characters": ["zhangsan"],
+  "location": "ancient_tavern",
+  "camera": {
+    "shot": "medium shot",
+    "angle": "eye level"
+  },
+  "duration_sec": 5,
+  "dialogue": [
+    {
+      "speaker": "zhangsan",
+      "text": "We are too late.",
+      "emotion": "tense"
+    }
+  ],
+  "actions": [
+    {
+      "character": "zhangsan",
+      "type": "enter",
+      "emotion": "tense",
+      "description": "Zhangsan pushes open the tavern door."
+    }
+  ]
+}
