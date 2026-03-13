@@ -2,6 +2,7 @@
 
 import unittest
 
+from engine.parser.extractors import BaseStoryExtractor, DeterministicStoryExtractor
 from engine.parser.story_adapter import story_content_to_story_json, story_json_to_story_content
 from engine.parser.story_parser import StoryParser
 from engine.parser.story_validator import validate_story_json
@@ -24,7 +25,52 @@ from models.scene_schema import (
 )
 
 
+class FakeExtractor(BaseStoryExtractor):
+    def extract(self, text: str) -> dict:
+        _ = text
+        return {
+            "story_id": "fake_story",
+            "title": "Fake",
+            "style": "anime",
+            "characters": [],
+            "locations": [],
+            "scenes": [],
+        }
+
+
 class StoryParserDefaultingTests(unittest.TestCase):
+    def test_story_parser_uses_default_deterministic_extractor(self) -> None:
+        parser = StoryParser()
+
+        story_json = parser.parse("Narrator watches the rain.")
+
+        self.assertEqual(story_json["style"], "anime")
+        self.assertTrue(story_json["scenes"])
+
+    def test_story_parser_accepts_custom_extractor_dependency(self) -> None:
+        parser = StoryParser(extractor=FakeExtractor())
+
+        story_json = parser.parse("ignored")
+
+        self.assertEqual(story_json["story_id"], "fake_story")
+        self.assertEqual(story_json["title"], "Fake")
+        self.assertEqual(story_json["scenes"], [])
+
+    def test_deterministic_extractor_emits_expected_canonical_shape(self) -> None:
+        extractor = DeterministicStoryExtractor()
+
+        story_json = extractor.extract("MIRA: We are too late.\nThe tavern door swings open.")
+
+        self.assertIn("story_id", story_json)
+        self.assertIn("title", story_json)
+        self.assertIn("style", story_json)
+        self.assertIn("characters", story_json)
+        self.assertIn("locations", story_json)
+        self.assertIn("scenes", story_json)
+        self.assertIsInstance(story_json["scenes"], list)
+        self.assertIn("scene_id", story_json["scenes"][0])
+        self.assertIn("camera", story_json["scenes"][0])
+
     def test_missing_location_defaults_to_unknown_location(self) -> None:
         parser = StoryParser()
         story_json = parser.parse("Narrator watches the rain.")
