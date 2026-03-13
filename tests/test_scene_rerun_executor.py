@@ -113,6 +113,10 @@ class SceneRerunExecutorTests(unittest.TestCase):
                 rerun_single_scene(context, 2, stage, bootstrap=True)
 
             self.assertEqual(context.selected_scene_ids, {2})
+            self.assertEqual(
+                context.metadata["rerun"],
+                {"is_rerun": True, "scene_ids": [2], "bootstrap": True},
+            )
             self.assertEqual(sorted(context.scene_results), [1, 2, 3])
             self.assertIsNot(context.scene_results[2], previous_scene_2)
             self.assertEqual(context.scene_results[2].status, "completed")
@@ -128,9 +132,13 @@ class SceneRerunExecutorTests(unittest.TestCase):
 
             stage = SceneRenderStage(image_provider=_ImageOk(), tts_provider=_TTSOk(), bgm_provider=_BGMFail())
             with patch("pipeline.audio_mixer.AudioSegment", None):
-                rerun_selected_scenes(context, {1, 3}, stage, bootstrap=False)
+                rerun_selected_scenes(context, {3, 1}, stage, bootstrap=False)
 
             self.assertEqual(context.selected_scene_ids, {1, 3})
+            self.assertEqual(
+                context.metadata["rerun"],
+                {"is_rerun": True, "scene_ids": [1, 3], "bootstrap": False},
+            )
             self.assertEqual(sorted(context.scene_results), [1, 2, 3])
             self.assertIs(context.scene_results[2], original_scene_2)
             self.assertEqual(context.scene_results[1].status, "completed")
@@ -148,6 +156,7 @@ class SceneRerunExecutorTests(unittest.TestCase):
                 rerun_selected_scenes(context, {1}, stage, bootstrap=False)
 
             self.assertEqual(context.scene_results[1].image_prompt, "forest prompt 1")
+            self.assertFalse(context.metadata["rerun"]["bootstrap"])
 
     def test_rerun_selected_scenes_raises_when_story_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

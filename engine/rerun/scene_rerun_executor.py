@@ -32,9 +32,19 @@ def rerun_selected_scenes(
     if context.story is None:
         raise ValueError("context.story must be available for scene rerun")
 
+    _record_rerun_metadata(context, scene_ids, bootstrap=bootstrap)
+
     if bootstrap:
         bootstrap_scene_rerun_context(context)
 
     prepare_scene_rerun(context, scene_ids)
     render_stage.run(context)
     return context
+
+
+def _record_rerun_metadata(context: PipelineContext, scene_ids: set[int], *, bootstrap: bool) -> None:
+    context.metadata["rerun"] = {
+        "is_rerun": True,
+        "scene_ids": sorted(scene_ids),
+        "bootstrap": bootstrap,
+    }
