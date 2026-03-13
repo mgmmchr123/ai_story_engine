@@ -163,11 +163,12 @@ class StoryExtractorFactoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported story extractor: unknown"):
             build_story_extractor("unknown")
 
-    def test_ollama_extractor_stub_raises_not_implemented(self) -> None:
-        extractor = OllamaStoryExtractor()
+    def test_ollama_extractor_accepts_configuration_kwargs(self) -> None:
+        extractor = OllamaStoryExtractor(model="custom-model", url="http://localhost:11434", timeout_seconds=12)
 
-        with self.assertRaisesRegex(NotImplementedError, "OllamaStoryExtractor is not implemented yet"):
-            extractor.extract("story")
+        self.assertEqual(extractor.model, "custom-model")
+        self.assertEqual(extractor.url, "http://localhost:11434")
+        self.assertEqual(extractor.timeout_seconds, 12)
 
     def test_gpt_extractor_stub_raises_not_implemented(self) -> None:
         extractor = GPTStoryExtractor()
