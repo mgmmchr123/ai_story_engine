@@ -10,6 +10,12 @@ from engine.cache.scene_instruction_cache import (
     save_scene_instruction,
     save_scene_instructions,
 )
+from engine.cache.scene_instruction_index import (
+    build_scene_instruction_path_index,
+    resolve_scene_instruction_path,
+    scene_instruction_filename,
+    scene_instruction_path_for_scene,
+)
 from engine.context import PipelineContext, RunPaths
 from pipeline.scene_builder_stage import SceneBuilderStage
 
@@ -35,6 +41,66 @@ def _example_instruction(scene_id: int = 1) -> dict:
 
 
 class SceneInstructionCacheTests(unittest.TestCase):
+    def test_scene_instruction_filename_uses_zero_padded_format(self) -> None:
+        self.assertEqual(scene_instruction_filename(1), "scene_001.json")
+
+    def test_scene_instruction_path_for_scene_returns_expected_path(self) -> None:
+        path = scene_instruction_path_for_scene(7, Path("output/scenes"))
+
+        self.assertTrue(str(path).endswith("scene_007.json"))
+
+    def test_build_scene_instruction_path_index_parses_valid_scene_paths(self) -> None:
+        index = build_scene_instruction_path_index(
+            [
+                "C:/runs/example/scenes/scene_001.json",
+                "C:/runs/example/scenes/scene_002.json",
+            ]
+        )
+
+        self.assertEqual(index[1], "C:/runs/example/scenes/scene_001.json")
+        self.assertEqual(index[2], "C:/runs/example/scenes/scene_002.json")
+
+    def test_build_scene_instruction_path_index_ignores_malformed_entries(self) -> None:
+        index = build_scene_instruction_path_index(
+            [
+                "",
+                "C:/runs/example/scenes/not_a_scene.json",
+                "C:/runs/example/scenes/scene_xyz.json",
+                "C:/runs/example/scenes/scene_003.json",
+            ]
+        )
+
+        self.assertEqual(index, {3: "C:/runs/example/scenes/scene_003.json"})
+
+    def test_resolve_scene_instruction_path_prefers_metadata_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scenes_dir = Path(tmp)
+            metadata_path = scenes_dir / "scene_001.json"
+            metadata_path.write_text("{}", encoding="utf-8")
+            alternate = scenes_dir / "scene_001.json"
+
+            resolved = resolve_scene_instruction_path(1, alternate.parent, metadata_paths=[str(metadata_path)])
+
+            self.assertEqual(resolved, metadata_path)
+
+    def test_resolve_scene_instruction_path_falls_back_to_deterministic_scene_dir_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scenes_dir = Path(tmp)
+            expected = scenes_dir / "scene_004.json"
+            expected.write_text("{}", encoding="utf-8")
+
+            resolved = resolve_scene_instruction_path(4, scenes_dir, metadata_paths=None)
+
+            self.assertEqual(resolved, expected)
+
+    def test_resolve_scene_instruction_path_returns_none_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scenes_dir = Path(tmp)
+
+            resolved = resolve_scene_instruction_path(9, scenes_dir, metadata_paths=None)
+
+            self.assertIsNone(resolved)
+
     def test_save_scene_instruction_uses_zero_padded_file_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
